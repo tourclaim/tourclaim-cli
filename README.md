@@ -279,6 +279,27 @@ The credentials file maps each API base URL to `{"api_key","expires_at","grant_i
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
+## Python
+
+A Python edition with the same commands, flags, output, exit codes and credentials file lives in [python/](python/). It needs Python 3.9 or newer and has no dependencies:
+
+```sh
+pip install tourclaim      # or: uvx tourclaim --help, pipx install tourclaim
+tourclaim --help
+```
+
+It is also a typed library, with one method per API operation:
+
+```python
+from tourclaim import Client
+
+client = Client()  # uses TOURCLAIM_API_KEY, else the key `tourclaim login` saved
+draft = client.start_intake({"merchant_name": "Example Air"})
+print(draft["missing_fields"], draft["next_questions"])
+```
+
+See [python/README.md](python/README.md).
+
 ## Development
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). `npm test` builds the tool and runs the tests against an in-process mock of the API; `npm run mock` starts that mock for trying the tool by hand. Releases are described in [RELEASING.md](RELEASING.md).

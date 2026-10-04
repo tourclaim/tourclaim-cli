@@ -59,3 +59,7 @@ tourclaim claims show <claim-id> --json
 ## Other ways in
 
 If your framework imports OpenAPI tools, `tourclaim schema` prints the API's OpenAPI document and the same rules apply. This CLI is for agents that run shell commands; it adds sign-in, safe key storage, consent prompts and file handling on top of the API.
+
+## Python edition
+
+`pip install tourclaim` (or `uvx tourclaim`) installs a Python edition of this tool. Its commands, flags, `--json` output, exit codes and credentials file are the same, so the rules above apply to it. It follows the API's newest behavior: `tourclaim intake list` lists the drafts the key can reach (keys from `tourclaim login` reach every draft started with `tourclaim login` on the same account), and a conflict's JSON error `code` is the API's own cause, such as `stale_revision` or `approval_required`. Programs can use its library, `tourclaim.Client`, under the same rules: pass `user_authorized_sharing=True` only after the traveler agreed to share that item, and never sign for them. See [python/README.md](python/README.md).
