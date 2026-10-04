@@ -1274,7 +1274,7 @@
       },
       "delete": {
         "summary": "Revoke the key making this request",
-        "description": "Disconnect this connection: the key stops working at once. Call it when the traveler signs out of your app or asks you to forget them. Drafts this key started and never submitted can no longer be reached by any key; submitted claims are unaffected.",
+        "description": "Disconnect this connection: the key stops working at once. Call it when the traveler signs out of your app or asks you to forget them. Drafts this key started and never submitted can no longer be reached through it (a command-line key's drafts stay reachable from the traveler's other command-line keys); submitted claims are unaffected.",
         "operationId": "disconnect",
         "responses": {
           "204": {

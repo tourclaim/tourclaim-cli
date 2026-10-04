@@ -65,7 +65,7 @@ export interface IntakeRecord {
   approvedRevision: number | null;
   claimId: string | null;
   reads: number;
-  /** Set by tests: the authorization text changed after the traveler signed. */
+  /** Set by tests: the signature is over 7 days old, or the authorization text changed. */
   approvalOutdated?: boolean;
   /** Increases on every change; drafts list most recently changed first. */
   changed: number;
@@ -856,13 +856,14 @@ export class MockServer {
   private submit(rec: IntakeRecord, body: unknown): unknown {
     const { revision } = this.checkRevisionBody(body, []);
     if (rec.claimId) return this.claimResponse(this.claims.get(rec.claimId) as ClaimRecord);
-    // Same order as the server: a revision mismatch is reported as approval_required.
-    if (rec.revision !== revision) throw conflict("approval_required", "The traveler must approve this exact intake revision");
-    // Simulates the authorization text changing after the traveler signed.
-    if (rec.approvalOutdated) throw conflict("approval_outdated", "Authorization changed; ask the traveler to review again");
+    // The server's order: each cause has its own code, in the order a client should fix them.
+    if (rec.revision !== revision) throw conflict("stale_revision", "Intake changed; retrieve the current revision and try again");
     if (rec.approvedRevision !== rec.revision) throw conflict("approval_required", "The traveler must approve this exact intake revision");
     if (this.missing(rec.fields).length) throw conflict("intake_incomplete", "Intake is incomplete");
-    const bookingKey = `${rec.traveler}|${String(rec.fields.merchant_name).toLowerCase()}|${String(rec.fields.booking_ref).toLowerCase()}`;
+    // Set by tests: the signature is over 7 days old or the authorization text changed.
+    if (rec.approvalOutdated) throw conflict("approval_outdated", "Approval expired; ask the traveler to review again");
+    if (Number(rec.fields.booking_amount) - Number(rec.fields.refunded_amount) <= 0) throw fail(422, "There is no unreimbursed booking cost to claim");
+    const bookingKey = `${rec.traveler}|${String(rec.fields.merchant_name).toLowerCase()}|${String(rec.fields.booking_ref).toLowerCase()}|${String(rec.fields.trip_date)}`;
     if ([...this.claims.values()].some((c) => c.bookingKey === bookingKey)) throw conflict("duplicate_booking", "A claim for this booking already exists");
     const claim: ClaimRecord = {
       id: randomUUID(),

@@ -546,12 +546,21 @@ describe("intake and claims", () => {
   });
 
   describe("submit and claims", () => {
-    it("refuses an unsigned draft locally with exit 4", async () => {
+    it("refuses an unsigned draft with exit 4 and the review link", async () => {
       const id = await start();
       const r = await cli(["intake", "submit", id, "--json"]);
       assert.equal(r.code, 4);
       assert.equal(r.jsonError().code, "approval_required");
       assert.equal(r.jsonError().review_url, `${mock.url}/connect/muse?intake=${id}`);
+      assert.equal(mock.intakes.get(id)?.claimId, null);
+    });
+
+    it("refuses an incomplete draft locally, naming what is missing", async () => {
+      const id = await start(["merchant_name=Example Air"]);
+      const r = await cli(["intake", "submit", id, "--json"]);
+      assert.equal(r.code, 4);
+      assert.equal(r.jsonError().code, "intake_incomplete");
+      assert.ok(r.jsonError().missing_fields.includes("booking_ref"));
       assert.equal(mock.requestsTo("POST", `/api/connectors/v1/intakes/${id}/submit`).length, 0);
     });
 
@@ -694,6 +703,11 @@ describe("intake and claims", () => {
 
       r = await cli(["intake", "submit", id, "--revision", "9", "--json"]);
       assert.equal(r.code, 4);
+      assert.equal(r.jsonError().code, "stale_revision");
+      assert.match(r.jsonError().message, /it is now at revision 1/);
+
+      r = await cli(["intake", "submit", id, "--revision", "1", "--json"]);
+      assert.equal(r.code, 4);
       assert.equal(r.jsonError().code, "approval_required");
       assert.match(r.jsonError().message, /has not signed revision 1/);
       assert.equal(r.jsonError().review_url, `${mock.url}/connect/muse?intake=${id}`);
@@ -714,7 +728,8 @@ describe("intake and claims", () => {
       const id = await start();
       mock.sign(id);
       mock.intakes.get(id)!.approvalOutdated = true;
-      const r = await cli(["intake", "submit", id, "--revision", "1", "--json"]);
+      // The draft now reads as needs_approval; only the API can say the signature is out of date.
+      const r = await cli(["intake", "submit", id, "--json"]);
       assert.equal(r.code, 4);
       assert.equal(r.jsonError().code, "approval_outdated");
       assert.match(r.jsonError().message, /signature is out of date/);

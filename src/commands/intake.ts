@@ -602,8 +602,9 @@ export const intakeSubmit: Command = {
   description: [
     "Hands a complete, signed draft to Copernican as a claim. Safe to retry: a repeated call returns the same claim.",
     "This does not file anything with an insurer, charge a fee or promise reimbursement.",
-    "Refused (exit 4) when the traveler has not signed the current revision, the signature is older than 7 days,",
-    "the draft is incomplete, or the booking already has a claim.",
+    "Refused (exit 4) when the draft changed (stale_revision), the traveler has not signed the current revision",
+    "(approval_required), the draft is incomplete (intake_incomplete), the signature is older than 7 days or the",
+    "authorization changed (approval_outdated), or the booking already has a claim (duplicate_booking).",
   ].join("\n"),
   options: { revision: { ...REVISION_OPTION, description: "The revision the traveler signed. Default: the draft's current revision." } },
   minArgs: 1,
@@ -614,8 +615,9 @@ export const intakeSubmit: Command = {
     let revision = intArg(args, "revision", 1);
     if (revision === undefined) {
       const intake = await getIntake(api, id);
+      // Answers missing: say which. Anything else (unsigned, or a signature
+      // that is out of date) the API names more precisely than the state does.
       if (intake.state === "collecting") throw incomplete(id, intake);
-      if (intake.state === "needs_approval") throw notSigned(id, intake);
       revision = intake.revision;
     }
     let claim: ClaimResponse;

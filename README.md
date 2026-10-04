@@ -181,7 +181,7 @@ Only the traveler can sign, in their own browser. When the draft is complete, th
 
 ### `tourclaim intake submit <id>`
 
-Submits a signed draft as a claim and prints the claim. Safe to retry: a repeated call returns the same claim. Exits 4 when the traveler has not signed the current revision (`approval_required`), the signature is out of date (`approval_outdated`), the draft is incomplete (`intake_incomplete`), or the booking already has a claim (`duplicate_booking`). Submitting does not file anything with an insurer, charge a fee or promise reimbursement; Copernican reviews the claim next.
+Submits a signed draft as a claim and prints the claim. Safe to retry: a repeated call returns the same claim. Exits 4 when the draft changed since `--revision` (`stale_revision`), the traveler has not signed the current revision (`approval_required`), the draft is incomplete (`intake_incomplete`), the signature is older than 7 days or the authorization changed (`approval_outdated`), or the booking already has a claim (`duplicate_booking`). Submitting does not file anything with an insurer, charge a fee or promise reimbursement; Copernican reviews the claim next.
 
 ### `tourclaim intake delete <id>`
 
@@ -244,7 +244,7 @@ Exit code 4 means the API refused a change because of the draft's state. The API
 | `intake_submitted` | The draft was submitted and is read-only. | `tourclaim claims list`. |
 | `intake_incomplete` | Answers are missing. | `tourclaim intake set`. |
 | `approval_required` | The traveler has not signed this revision. | `tourclaim intake sign <id> --wait`. |
-| `approval_outdated` | The signature is out of date. | The traveler signs again: `tourclaim intake sign <id> --wait`. |
+| `approval_outdated` | The signature is older than 7 days, or the authorization changed. | The traveler signs again: `tourclaim intake sign <id> --wait`. |
 | `evidence_conflict` | The same email or file was already added with different details. | Nothing to do, or add it under its original details. |
 | `duplicate_booking` | This booking already has a claim. | `tourclaim claims list`. |
 
