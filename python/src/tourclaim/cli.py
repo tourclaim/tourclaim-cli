@@ -27,10 +27,13 @@ from .client import (
     IDEMPOTENCY_KEY_FORMAT,
     KEY_FORMAT,
     MAX_EMAIL_TEXT,
+    MAX_POLL_FAILURES,
     SENT_AT_FORMAT,
     Client,
     derive_message_id,
+    is_transient_status,
     sentences,
+    transient_wait_seconds,
 )
 from .config import absolute_url, is_http_url, machine, resolve_api_url, user_agent
 from .credentials import CredentialStore, StoredCredential, credentials_path
@@ -41,9 +44,11 @@ from .errors import (
     ConflictError,
     ExitCode,
     FileTooLargeError,
+    NetworkError,
     NotFoundError,
     NotSignedInError,
     PermissionDeniedError,
+    RequestTimeoutError,
     TourClaimError,
     UnavailableError,
     UnsupportedFileError,
@@ -1258,9 +1263,24 @@ def run_intake_sign(ctx: Context, args: Args) -> int:
         f"Waiting for the traveler to sign (checking every 5 seconds for up to {span}). Ctrl-C stops waiting; the link stays valid."
     )
     deadline = ctx.deps.now() + timeout
-    while ctx.deps.now() + SIGN_POLL_SECONDS <= deadline:
-        ctx.deps.sleep(SIGN_POLL_SECONDS)
-        current = get_intake(api, intake_id)
+    pause: float = SIGN_POLL_SECONDS
+    failures = 0
+    while ctx.deps.now() + pause <= deadline:
+        ctx.deps.sleep(pause)
+        pause = SIGN_POLL_SECONDS
+        try:
+            current = get_intake(api, intake_id)
+            failures = 0
+        except (NetworkError, RequestTimeoutError, APIError) as error:
+            # No answer, or a temporary server error (502, 503, 504): keep waiting a few times.
+            if isinstance(error, APIError) and not is_transient_status(error):
+                raise
+            failures += 1
+            if failures >= MAX_POLL_FAILURES:
+                raise
+            if isinstance(error, APIError):
+                pause = transient_wait_seconds(error, SIGN_POLL_SECONDS)
+            continue
         if current.get("state") in ("ready_to_submit", "submitted"):
             if ctx.json:
                 ctx.out.data(current)

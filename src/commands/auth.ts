@@ -1,4 +1,4 @@
-import { API_PREFIX, ApiError, sentences, type ApiClient } from "../api.js";
+import { API_PREFIX, ApiError, isNetworkFailure, isTransientStatus, sentences, transientWaitSeconds, type ApiClient } from "../api.js";
 import { flag, strs, type Command } from "../command.js";
 import { absoluteUrl } from "../config.js";
 import type { Context } from "../context.js";
@@ -115,6 +115,7 @@ async function pollForToken(ctx: Context, api: ApiClient, code: DeviceCodeRespon
   let interval = Math.max(1, Number(code.interval) || 5);
   const deadline = ctx.deps.now() + code.expires_in * 1000;
   let failures = 0;
+  let nextWait: number | null = null;
   let bearer = replacing;
   const expired = () =>
     new CliError("The sign-in code expired before it was approved. Run tourclaim login again.", ExitCode.AUTH, "expired_token");
@@ -128,7 +129,9 @@ async function pollForToken(ctx: Context, api: ApiClient, code: DeviceCodeRespon
       retryRateLimit: false,
     });
   for (;;) {
-    await ctx.deps.sleep(Math.max(0, Math.min(interval * 1000, deadline - ctx.deps.now())));
+    const wait = nextWait ?? interval;
+    nextWait = null;
+    await ctx.deps.sleep(Math.max(0, Math.min(wait * 1000, deadline - ctx.deps.now())));
     const final = ctx.deps.now() >= deadline;
     let res;
     try {
@@ -140,9 +143,14 @@ async function pollForToken(ctx: Context, api: ApiClient, code: DeviceCodeRespon
       }
       failures = 0;
     } catch (error) {
-      const transient = error instanceof CliError && (error.code === "network_error" || error.code === "timeout");
-      if (transient && !final && ++failures < MAX_POLL_FAILURES) {
-        interval = Math.min(interval * 2, 60);
+      // No answer, or a temporary server error (502, 503, 504): the traveler may
+      // already have approved, so keep going a few times rather than give up.
+      // The poll at or after the deadline is still the last one.
+      const network = isNetworkFailure(error);
+      const busy = isTransientStatus(error);
+      if ((network || busy) && !final && ++failures < MAX_POLL_FAILURES) {
+        if (busy) nextWait = transientWaitSeconds(error, interval);
+        else interval = Math.min(interval * 2, 60);
         continue;
       }
       throw error;

@@ -248,8 +248,42 @@ export function toApiError(status: number, body: unknown, headers: Headers): Api
       return new ApiError(status, sentences(message, `Try again in ${retryAfter} seconds.`), ExitCode.RATE_LIMITED, "rate_limited", json, { retry_after: retryAfter });
     }
     case 503:
-      return new ApiError(status, sentences(message, "The TourClaim connector is unavailable right now; nothing was changed. Try again later."), ExitCode.UNAVAILABLE, "unavailable", json);
+      return new ApiError(
+        status,
+        sentences(message, "The TourClaim connector is unavailable right now; nothing was changed. Try again later."),
+        ExitCode.UNAVAILABLE,
+        "unavailable",
+        json,
+        retryAfterExtra(headers),
+      );
     default:
-      return new ApiError(status, message, ExitCode.ERROR, "api_error", json);
+      return new ApiError(status, message, ExitCode.ERROR, "api_error", json, TRANSIENT_STATUSES.includes(status) ? retryAfterExtra(headers) : {});
   }
+}
+
+function retryAfterExtra(headers: Headers): Record<string, unknown> {
+  const value = headers.get("retry-after");
+  return value === null ? {} : { retry_after: retryAfterSeconds(value) };
+}
+
+/**
+ * Statuses that mean "try again shortly": a gateway timeout or error at the
+ * edge, or the server's 503 for a brief database lock clash.
+ */
+export const TRANSIENT_STATUSES: readonly number[] = [502, 503, 504];
+
+/** A server answer worth retrying a few times in a polling loop. */
+export function isTransientStatus(error: unknown): error is ApiError {
+  return error instanceof ApiError && TRANSIENT_STATUSES.includes(error.status);
+}
+
+/** No answer at all: the network failed or the request timed out. */
+export function isNetworkFailure(error: unknown): boolean {
+  return error instanceof CliError && !(error instanceof ApiError) && (error.code === "network_error" || error.code === "timeout");
+}
+
+/** Seconds to wait after a transient answer: its Retry-After, capped at `cap`, else `cap`. */
+export function transientWaitSeconds(error: ApiError, cap: number): number {
+  const retryAfter = error.extra.retry_after;
+  return typeof retryAfter === "number" ? Math.min(retryAfter, cap) : cap;
 }

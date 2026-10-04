@@ -527,6 +527,33 @@ describe("intake and claims", () => {
       assert.equal(final.state, "ready_to_submit");
     });
 
+    it("--wait rides out a temporary 503 while polling", async () => {
+      const id = await start();
+      let polls = 0;
+      const r = await cli(["intake", "sign", id, "--wait", "--json"], {
+        onSleep: () => {
+          polls++;
+          if (polls === 1) mock.inject.push({ status: 503, body: { detail: "Service busy" }, headers: { "Retry-After": "1" } });
+          if (polls === 2) mock.sign(id);
+        },
+      });
+      assert.equal(r.code, 0, r.stderr);
+      assert.deepEqual(r.sleeps, [5000, 1000]);
+      assert.equal(r.json().state, "ready_to_submit");
+    });
+
+    it("--wait still ends after repeated temporary failures", async () => {
+      const id = await start();
+      const r = await cli(["intake", "sign", id, "--wait", "--json"], {
+        onSleep: () => {
+          mock.inject.push({ status: 504, body: "" });
+        },
+      });
+      assert.equal(r.code, 1);
+      assert.equal(r.jsonError().status, 504);
+      assert.deepEqual(r.sleeps, [5000, 5000, 5000]);
+    });
+
     it("--wait gives up at --timeout", async () => {
       const id = await start();
       const r = await cli(["intake", "sign", id, "--wait", "--timeout", "12", "--json"]);

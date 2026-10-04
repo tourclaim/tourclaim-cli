@@ -231,7 +231,7 @@ class MockServer:
         self.device_script: List[str] = []
         #: Called for every request before it is handled.
         self.on_request: Optional[Callable[[RecordedRequest], None]] = None
-        #: Responses returned, in order, to the next connector requests instead of handling them.
+        #: Responses returned, in order, to the next connector requests (to "path" only, when given) instead of handling them.
         self.inject: List[Dict[str, Any]] = []
         self._server: Optional[ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
@@ -393,8 +393,9 @@ class MockServer:
             self.rate_limit["remaining"] -= 1
             retry = self.rate_limit["retry_after"]
             raise HttpError(429, {"error": "Rate limit exceeded: 60 per 1 minute"}, {} if retry is None else {"Retry-After": retry})
-        if self.inject:
-            injected = self.inject.pop(0)
+        index = next((i for i, item in enumerate(self.inject) if not item.get("path") or item["path"] == path), None)
+        if index is not None:
+            injected = self.inject.pop(index)
             raise HttpError(injected["status"], injected["body"], injected.get("headers"))
 
         if path == "/api/connectors/device/code" and method == "POST":

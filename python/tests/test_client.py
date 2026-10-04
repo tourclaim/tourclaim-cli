@@ -342,3 +342,36 @@ def test_device_login_save_sends_the_stored_key_so_the_server_retires_it(mock, i
     assert mock.requests_to("POST", "/api/connectors/device/token")[-1].headers.get("authorization") == f"Bearer {old}"
     assert mock.key_record(old).revoked is True
     assert tourclaim.CredentialStore.default().get(mock.url).api_key != old
+
+
+def test_wait_for_signature_rides_out_temporary_server_errors(client, mock):
+    draft = client.start_intake(COMPLETE)
+    sleeps = []
+
+    def sleep(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) == 1:
+            mock.inject.append({"status": 503, "body": {"detail": "Service busy"}, "headers": {"Retry-After": "1"}})
+        if len(sleeps) == 2:
+            mock.inject.append({"status": 502, "body": ""})
+        if len(sleeps) == 3:
+            mock.sign(draft["id"])
+
+    assert client.wait_for_signature(draft["id"], sleep=sleep)["state"] == "ready_to_submit"
+    assert sleeps == [5, 1, 5]
+
+
+def test_wait_for_signature_ends_after_repeated_temporary_errors(client, mock):
+    draft = client.start_intake(COMPLETE)
+    with pytest.raises(UnavailableError):
+        client.wait_for_signature(draft["id"], sleep=lambda s: mock.inject.append({"status": 503, "body": {"detail": "busy"}}))
+
+
+def test_device_poll_rides_out_a_503(mock):
+    c = Client(api_url=mock.url, load_credentials=False)
+    code = c.request_device_code()
+    mock.inject.append({"status": 503, "body": {"detail": "busy"}, "headers": {"Retry-After": "1"}, "path": "/api/connectors/device/token"})
+    mock.device_script = ["approve"]
+    sleeps = []
+    token = c.wait_for_device_token(code, sleep=sleeps.append)
+    assert token["api_key"].startswith("tc_muse_") and sleeps == [5, 1]

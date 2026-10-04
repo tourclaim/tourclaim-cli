@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { basename } from "node:path";
-import { API_PREFIX, ApiError, sentences, type ApiClient } from "../api.js";
+import { API_PREFIX, ApiError, isNetworkFailure, isTransientStatus, sentences, transientWaitSeconds, type ApiClient } from "../api.js";
 import { flag, intArg, str, strs, type Command } from "../command.js";
 import { absoluteUrl } from "../config.js";
 import type { Context } from "../context.js";
@@ -33,6 +33,7 @@ const IDEMPOTENCY_KEY = /^[A-Za-z0-9_-]{8,100}$/;
 const FILENAME = /^[^/\\\x00-\x1f]+$/;
 const MAX_EMAIL_TEXT = 30_000;
 const SIGN_POLL_MS = 5_000;
+const MAX_POLL_FAILURES = 3;
 const DEFAULT_SIGN_TIMEOUT_S = 900;
 const PAGE_SIZE = 30;
 
@@ -570,9 +571,23 @@ export const intakeSign: Command = {
       `Waiting for the traveler to sign (checking every 5 seconds for up to ${minutes >= 1 ? `${minutes} minute${minutes === 1 ? "" : "s"}` : `${timeout} seconds`}). Ctrl-C stops waiting; the link stays valid.`,
     );
     const deadline = ctx.deps.now() + timeout * 1000;
-    while (ctx.deps.now() + SIGN_POLL_MS <= deadline) {
-      await ctx.deps.sleep(SIGN_POLL_MS);
-      const current = await getIntake(api, id);
+    let pause = SIGN_POLL_MS;
+    let failures = 0;
+    while (ctx.deps.now() + pause <= deadline) {
+      await ctx.deps.sleep(pause);
+      pause = SIGN_POLL_MS;
+      let current: IntakeResponse;
+      try {
+        current = await getIntake(api, id);
+        failures = 0;
+      } catch (error) {
+        // No answer, or a temporary server error (502, 503, 504): keep waiting a few times.
+        if ((isNetworkFailure(error) || isTransientStatus(error)) && ++failures < MAX_POLL_FAILURES) {
+          if (isTransientStatus(error)) pause = transientWaitSeconds(error, SIGN_POLL_MS / 1000) * 1000;
+          continue;
+        }
+        throw error;
+      }
       if (current.state === "ready_to_submit" || current.state === "submitted") {
         if (ctx.json) ctx.out.data(current);
         else ctx.out.lines([`Signed: the traveler approved revision ${current.revision}.`, ...nextStepLines(current)]);

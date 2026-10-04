@@ -129,6 +129,27 @@ def sentences(*parts: Optional[str]) -> str:
     return " ".join(out)
 
 
+#: Statuses that mean "try again shortly": a gateway timeout or error at the
+#: edge, or the server's 503 for a brief database lock clash.
+TRANSIENT_STATUSES = (502, 503, 504)
+
+
+def is_transient_status(error: BaseException) -> bool:
+    """A server answer worth retrying a few times in a polling loop."""
+    return isinstance(error, APIError) and error.status in TRANSIENT_STATUSES
+
+
+def transient_wait_seconds(error: APIError, cap: float) -> float:
+    """Seconds to wait after a transient answer: its Retry-After, capped at ``cap``, else ``cap``."""
+    header = error.headers.get("retry-after")
+    return float(min(retry_after_seconds(header), cap)) if header is not None else float(cap)
+
+
+def _retry_after_extra(headers: Mapping[str, str]) -> Dict[str, Any]:
+    value = headers.get("retry-after")
+    return {} if value is None else {"retry_after": retry_after_seconds(value)}
+
+
 def retry_after_seconds(value: Optional[str], now: Optional[float] = None) -> int:
     """Seconds from a Retry-After header (delta-seconds or an HTTP date)."""
     if not value:
@@ -237,8 +258,10 @@ def to_api_error(status: int, body: Any, headers: Mapping[str, str]) -> APIError
             sentences(message, "The TourClaim connector is unavailable right now; nothing was changed. Try again later"),
             body=data,
             headers=headers,
+            extra=_retry_after_extra(headers),
         )
-    return APIError(status, message, body=data, headers=headers)
+    extra = _retry_after_extra(headers) if status in TRANSIENT_STATUSES else None
+    return APIError(status, message, body=data, headers=headers, extra=extra)
 
 
 def derive_message_id(sender: str, subject: str, sent_at: Optional[str], text: str) -> str:
@@ -640,6 +663,7 @@ class Client:
         now = now or time.time
         deadline = now() + timeout
         current = self.get_intake(intake_id)
+        failures = 0
         while True:
             state = current.get("state")
             if state in ("ready_to_submit", "submitted"):
@@ -657,8 +681,21 @@ class Client:
                     f"The traveler has not signed draft {intake_id} after {timeout:g} seconds. The review link stays valid: {current.get('review_url')}",
                     extra={"review_url": current.get("review_url")},
                 )
-            sleep(interval)
-            current = self.get_intake(intake_id)
+            pause = interval
+            while True:
+                sleep(pause)
+                try:
+                    current = self.get_intake(intake_id)
+                    failures = 0
+                    break
+                except (NetworkError, RequestTimeoutError, APIError) as error:
+                    # No answer, or a temporary server error (502, 503, 504): keep waiting a few times.
+                    if isinstance(error, APIError) and not is_transient_status(error):
+                        raise
+                    failures += 1
+                    pause = transient_wait_seconds(error, interval) if isinstance(error, APIError) else interval
+                    if failures >= MAX_POLL_FAILURES or now() + pause > deadline:
+                        raise
 
     # ---- claims ----
 
@@ -778,13 +815,16 @@ class Client:
         interval = max(1.0, interval)
         deadline = now() + float(code["expires_in"])
         failures = 0
+        next_wait: Optional[float] = None
         bearer: List[Optional[str]] = [replacing]
 
         def expired() -> ExpiredTokenError:
             return ExpiredTokenError("The sign-in code expired before it was approved. Run tourclaim login again.")
 
         while True:
-            sleep(max(0.0, min(interval, deadline - now())))
+            wait = next_wait if next_wait is not None else interval
+            next_wait = None
+            sleep(max(0.0, min(wait, deadline - now())))
             final = now() >= deadline
             try:
                 token = self._poll_device_token(code["device_code"], bearer)
@@ -803,6 +843,17 @@ class Client:
                 failures += 1
                 if not final and failures < MAX_POLL_FAILURES:
                     interval = min(interval * 2, 60.0)
+                    continue
+                raise
+            except APIError as error:
+                # A temporary server error (502, 503, 504): the traveler may already
+                # have approved, so keep going a few times rather than give up. The
+                # poll at or after the deadline is still the last one.
+                if not is_transient_status(error):
+                    raise
+                failures += 1
+                if not final and failures < MAX_POLL_FAILURES:
+                    next_wait = transient_wait_seconds(error, interval)
                     continue
                 raise
             self._api_key, self._key_resolved, self.key_source = token["api_key"], True, "device_login"

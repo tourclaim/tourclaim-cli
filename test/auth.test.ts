@@ -7,6 +7,7 @@ import { credPath, runCli, tempHome } from "./harness.js";
 import { MockServer } from "./mock-server.js";
 
 const isWindows = process.platform === "win32";
+const TOKEN = "/api/connectors/device/token";
 
 describe("login (device flow)", () => {
   let mock: MockServer;
@@ -21,6 +22,7 @@ describe("login (device flow)", () => {
   beforeEach(async () => {
     ({ home, cleanup } = await tempHome());
     mock.deviceScript = [];
+    mock.inject = [];
     mock.rateLimit.remaining = 0;
   });
   afterEach(() => cleanup());
@@ -139,6 +141,70 @@ describe("login (device flow)", () => {
       const r = await runCli(["login", "--no-browser"], { home, apiUrl: short.url });
       assert.equal(r.code, 0, r.stderr);
       assert.deepEqual(r.sleeps, [5000, 5000, 2000]);
+    } finally {
+      await short.stop();
+    }
+  });
+
+  it("a 503 from the token poll is temporary: it waits Retry-After, then the key signs in", async () => {
+    mock.inject.push({ status: 503, body: { detail: "Service busy" }, headers: { "Retry-After": "1" }, path: TOKEN });
+    mock.deviceScript = ["approve"];
+    const r = await runCli(["login", "--no-browser", "--json"], { home, apiUrl: mock.url });
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(r.sleeps, [5000, 1000]);
+    assert.equal(r.json().event, "signed_in");
+  });
+
+  it("a 502 or 504 without Retry-After waits the interval, and Retry-After never stretches it", async () => {
+    mock.inject.push({ status: 502, body: "<html>Bad Gateway</html>", path: TOKEN });
+    mock.inject.push({ status: 503, body: { detail: "Service busy" }, headers: { "Retry-After": "30" }, path: TOKEN });
+    mock.deviceScript = ["approve"];
+    const r = await runCli(["login", "--no-browser"], { home, apiUrl: mock.url });
+    assert.equal(r.code, 0, r.stderr);
+    assert.deepEqual(r.sleeps, [5000, 5000, 5000]);
+  });
+
+  it("temporary failures past the limit still end the sign-in", async () => {
+    for (let i = 0; i < 3; i++) mock.inject.push({ status: 503, body: { detail: "Service busy" }, headers: { "Retry-After": "1" }, path: TOKEN });
+    const r = await runCli(["login", "--no-browser", "--json"], { home, apiUrl: mock.url });
+    assert.equal(r.code, 7);
+    assert.equal(r.jsonError().code, "unavailable");
+    assert.equal(r.jsonError().retry_after, 1);
+    assert.deepEqual(r.sleeps, [5000, 1000, 1000]);
+  });
+
+  it("a temporary failure is retried and a later success counts the failures from zero", async () => {
+    mock.inject.push({ status: 503, body: { detail: "Service busy" }, headers: { "Retry-After": "1" }, path: TOKEN });
+    mock.inject.push({ status: 504, body: "", path: TOKEN });
+    mock.deviceScript = ["pending", "approve"];
+    let polls = 0;
+    mock.onRequest = (req) => {
+      if (req.path === "/api/connectors/device/token" && ++polls === 4) {
+        mock.inject.push({ status: 502, body: "", path: TOKEN }, { status: 503, body: { detail: "Service busy" }, path: TOKEN });
+      }
+    };
+    try {
+      const r = await runCli(["login", "--no-browser"], { home, apiUrl: mock.url });
+      assert.equal(r.code, 0, r.stderr);
+      // 503 (1 s), 504 (interval), pending resets the count, 502 and 503 (interval each), then the key.
+      assert.deepEqual(r.sleeps, [5000, 1000, 5000, 5000, 5000, 5000]);
+    } finally {
+      mock.onRequest = null;
+    }
+  });
+
+  it("the poll at the deadline is the last one even when it meets a 503", async () => {
+    const short = new MockServer({ deviceInterval: 5, deviceExpiresIn: 12 });
+    await short.start();
+    let polls = 0;
+    short.onRequest = (req) => {
+      if (req.path === "/api/connectors/device/token" && ++polls === 3) short.inject.push({ status: 503, body: { detail: "Service busy" }, path: TOKEN });
+    };
+    try {
+      const r = await runCli(["login", "--no-browser"], { home, apiUrl: short.url });
+      assert.equal(r.code, 7);
+      assert.deepEqual(r.sleeps, [5000, 5000, 2000]);
+      assert.equal(short.requestsTo("POST", "/api/connectors/device/token").length, 3);
     } finally {
       await short.stop();
     }

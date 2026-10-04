@@ -152,6 +152,76 @@ def test_collects_an_approval_made_in_the_last_seconds(home):
         short.stop()
 
 
+TOKEN = "/api/connectors/device/token"
+BUSY = {"status": 503, "body": {"detail": "Service busy"}, "headers": {"Retry-After": "1"}, "path": TOKEN}
+
+
+def test_a_503_from_the_token_poll_is_temporary_and_the_key_still_signs_in(mock, home):
+    mock.inject.append(dict(BUSY))
+    mock.device_script = ["approve"]
+    r = run_cli(["login", "--no-browser", "--json"], home=home, api_url=mock.url)
+    assert r.code == 0, r.stderr
+    assert r.sleeps == [5, 1]
+    assert r.json()["event"] == "signed_in"
+
+
+def test_a_502_or_504_waits_the_interval_and_retry_after_never_stretches_it(mock, home):
+    mock.inject.append({"status": 502, "body": "Bad Gateway", "path": TOKEN})
+    mock.inject.append({"status": 503, "body": {"detail": "Service busy"}, "headers": {"Retry-After": "30"}, "path": TOKEN})
+    mock.device_script = ["approve"]
+    r = run_cli(["login", "--no-browser"], home=home, api_url=mock.url)
+    assert r.code == 0, r.stderr
+    assert r.sleeps == [5, 5, 5]
+
+
+def test_temporary_failures_past_the_limit_still_end_the_sign_in(mock, home):
+    mock.inject.extend(dict(BUSY) for _ in range(3))
+    r = run_cli(["login", "--no-browser", "--json"], home=home, api_url=mock.url)
+    assert r.code == 7
+    assert r.json_error()["code"] == "unavailable"
+    assert r.json_error()["retry_after"] == 1
+    assert r.sleeps == [5, 1, 1]
+
+
+def test_a_later_answer_counts_temporary_failures_from_zero(mock, home):
+    mock.inject.extend([dict(BUSY), {"status": 504, "body": "", "path": TOKEN}])
+    mock.device_script = ["pending", "approve"]
+    polls = {"n": 0}
+
+    def on_request(req):
+        if req.path == TOKEN:
+            polls["n"] += 1
+            if polls["n"] == 4:
+                mock.inject.extend([{"status": 502, "body": "", "path": TOKEN}, {"status": 503, "body": {"detail": "busy"}, "path": TOKEN}])
+
+    mock.on_request = on_request
+    r = run_cli(["login", "--no-browser"], home=home, api_url=mock.url)
+    assert r.code == 0, r.stderr
+    # 503 (1 s), 504 (interval), pending resets the count, 502 and 503 (interval each), then the key.
+    assert r.sleeps == [5, 1, 5, 5, 5, 5]
+
+
+def test_the_poll_at_the_deadline_is_the_last_one_even_when_it_meets_a_503(home):
+    short = MockServer(device_interval=5, device_expires_in=12)
+    short.start()
+    polls = {"n": 0}
+
+    def on_request(req):
+        if req.path == TOKEN:
+            polls["n"] += 1
+            if polls["n"] == 3:
+                short.inject.append({"status": 503, "body": {"detail": "Service busy"}, "path": TOKEN})
+
+    short.on_request = on_request
+    try:
+        r = run_cli(["login", "--no-browser"], home=home, api_url=short.url)
+        assert r.code == 7
+        assert r.sleeps == [5, 5, 2]
+        assert len(short.requests_to("POST", TOKEN)) == 3
+    finally:
+        short.stop()
+
+
 def test_sends_no_key_with_the_polls_when_none_is_stored(mock, home):
     mock.device_script = ["pending", "approve"]
     before = len(mock.requests)

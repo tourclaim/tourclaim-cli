@@ -536,6 +536,34 @@ def test_sign_wait_polls_every_5_seconds_until_the_traveler_signs(s, mock):
     assert final["state"] == "ready_to_submit"
 
 
+def test_sign_wait_rides_out_a_temporary_503(s, mock):
+    draft = s.start()
+    count = {"n": 0}
+
+    def on_sleep(_seconds):
+        count["n"] += 1
+        if count["n"] == 1:
+            mock.inject.append({"status": 503, "body": {"detail": "Service busy"}, "headers": {"Retry-After": "1"}})
+        if count["n"] == 2:
+            mock.sign(draft)
+
+    r = s.cli(["intake", "sign", draft, "--wait", "--json"], on_sleep=on_sleep)
+    assert r.code == 0, r.stderr
+    assert r.sleeps == [5, 1]
+    assert r.json()["state"] == "ready_to_submit"
+
+
+def test_sign_wait_still_ends_after_repeated_temporary_failures(s, mock):
+    draft = s.start()
+    r = s.cli(
+        ["intake", "sign", draft, "--wait", "--json"],
+        on_sleep=lambda _seconds: mock.inject.append({"status": 504, "body": ""}),
+    )
+    assert r.code == 1
+    assert r.json_error()["status"] == 504
+    assert r.sleeps == [5, 5, 5]
+
+
 def test_sign_wait_gives_up_at_timeout(s):
     draft = s.start()
     r = s.cli(["intake", "sign", draft, "--wait", "--timeout", "12", "--json"])
