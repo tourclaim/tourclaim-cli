@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import { CredentialStore } from "../src/credentials.js";
-import { runCli, tempHome, type CliOptions, type CliResult } from "./harness.js";
+import { credPath, runCli, tempHome, type CliOptions, type CliResult } from "./harness.js";
 import { MockServer } from "./mock-server.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aY1EAAAAASUVORK5CYII=", "base64");
@@ -41,7 +41,7 @@ describe("intake and claims", () => {
     traveler = `traveler${++travelerCount}@example.com`;
     // A key as tourclaim login (device flow) mints it.
     key = mock.issueKey({ traveler, channel: "cli" });
-    await new CredentialStore(join(home, ".config", "tourclaim", "credentials.json"), process.platform, () => {}).set(mock.url, {
+    await new CredentialStore(credPath(home), process.platform, () => {}).set(mock.url, {
       api_key: key,
       expires_at: null,
       grant_id: null,

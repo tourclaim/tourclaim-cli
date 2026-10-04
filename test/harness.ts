@@ -3,11 +3,21 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { credentialsPath } from "../src/credentials.js";
 import type { Deps } from "../src/deps.js";
 import { run } from "../src/main.js";
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const CLI = join(ROOT, "dist", "cli.js");
+
+/** Where the CLI keeps credentials for a test home: XDG on Linux and macOS, %APPDATA% on Windows. */
+export function configEnv(home: string): Record<string, string> {
+  return { XDG_CONFIG_HOME: join(home, ".config"), APPDATA: join(home, "AppData", "Roaming") };
+}
+
+export function credPath(home: string): string {
+  return credentialsPath(configEnv(home), process.platform, home);
+}
 
 export interface CliResult {
   code: number;
@@ -81,11 +91,11 @@ export async function runCli(argv: string[], options: CliOptions): Promise<CliRe
   let clock = options.now ?? Date.now();
   const deps: Deps = {
     env: {
-      XDG_CONFIG_HOME: join(options.home, ".config"),
+      ...configEnv(options.home),
       ...(options.apiUrl ? { TOURCLAIM_API_URL: options.apiUrl } : {}),
       ...options.env,
     },
-    platform: process.platform === "win32" ? "linux" : process.platform,
+    platform: process.platform,
     arch: "x64",
     nodeVersion: "20.0.0",
     homedir: options.home,
@@ -135,11 +145,17 @@ export interface Spawned {
 
 /** Runs the built dist/cli.js as a child process. Never blocks the event loop. */
 export function spawnCli(argv: string[], options: { home: string; env?: Record<string, string>; stdin?: string }): Spawned {
+  // Keep the runner's environment (Windows needs SystemRoot and friends), but
+  // never a developer's own TourClaim settings, and point every config
+  // location at the test home.
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const name of Object.keys(env)) if (name.startsWith("TOURCLAIM_")) delete env[name];
   const child = spawn(process.execPath, [CLI, ...argv], {
     env: {
-      PATH: process.env.PATH ?? "",
+      ...env,
       HOME: options.home,
-      XDG_CONFIG_HOME: join(options.home, ".config"),
+      USERPROFILE: options.home,
+      ...configEnv(options.home),
       ...options.env,
     },
     stdio: ["pipe", "pipe", "pipe"],

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile, stat, writeFile, mkdir, chmod } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 import { CredentialStore } from "../src/credentials.js";
-import { runCli, tempHome } from "./harness.js";
+import { credPath, runCli, tempHome } from "./harness.js";
 import { MockServer } from "./mock-server.js";
 
 const isWindows = process.platform === "win32";
@@ -37,7 +37,7 @@ describe("login (device flow)", () => {
     assert.match(r.stdout, /Review mode: claims are synthetic and nothing is filed/);
     assert.deepEqual(r.opened, [], "--no-browser must not open anything");
 
-    const path = join(home, ".config", "tourclaim", "credentials.json");
+    const path = credPath(home);
     const saved = JSON.parse(await readFile(path, "utf8"));
     const entry = saved[mock.url];
     assert.match(entry.api_key, /^tc_muse_[A-Za-z0-9_-]{48}$/);
@@ -46,7 +46,7 @@ describe("login (device flow)", () => {
     assert.deepEqual(entry.scopes, ["intakes:write", "evidence:write", "claims:submit", "claims:read"]);
     if (!isWindows) {
       assert.equal((await stat(path)).mode & 0o777, 0o600);
-      assert.equal((await stat(join(home, ".config", "tourclaim"))).mode & 0o777, 0o700);
+      assert.equal((await stat(dirname(credPath(home)))).mode & 0o777, 0o700);
     }
     assert.ok(!r.stdout.includes(entry.api_key) && !r.stderr.includes(entry.api_key), "the key must never be printed");
   });
@@ -57,7 +57,7 @@ describe("login (device flow)", () => {
     const r = await runCli(["login", "--no-browser", "--scope", "intakes:write,claims:read"], { home, apiUrl: mock.url });
     assert.equal(r.code, 0, r.stderr);
     const codeReq = mock.requestsTo("POST", "/api/connectors/device/code").at(-1);
-    assert.deepEqual(codeReq?.body, { client: "tourclaim-cli/0.1.0 (" + (process.platform === "win32" ? "linux" : process.platform) + " x64; node 20.0.0)", scopes: ["intakes:write", "claims:read"] });
+    assert.deepEqual(codeReq?.body, { client: `tourclaim-cli/0.1.0 (${process.platform} x64; node 20.0.0)`, scopes: ["intakes:write", "claims:read"] });
     for (const req of mock.requests.slice(before)) {
       assert.match(String(req.headers["user-agent"]), /^tourclaim-cli\/0\.1\.0 \(\w+ x64; node 20\.0\.0\)$/);
     }
@@ -105,7 +105,7 @@ describe("login (device flow)", () => {
     assert.equal(r.code, 3);
     assert.equal(r.jsonError().code, "access_denied");
     assert.match(r.jsonError().message, /declined/);
-    assert.equal(await new CredentialStore(join(home, ".config", "tourclaim", "credentials.json"), process.platform, () => {}).get(mock.url), null);
+    assert.equal(await new CredentialStore(credPath(home), process.platform, () => {}).get(mock.url), null);
   });
 
   it("exits 3 when the code expired or was already used", async () => {
@@ -150,7 +150,7 @@ describe("login (device flow)", () => {
 
   it("reports an existing valid key instead of starting a new sign-in", async () => {
     const key = mock.issueKey();
-    await new CredentialStore(join(home, ".config", "tourclaim", "credentials.json"), process.platform, () => {}).set(mock.url, {
+    await new CredentialStore(credPath(home), process.platform, () => {}).set(mock.url, {
       api_key: key,
       expires_at: null,
       grant_id: null,
@@ -166,7 +166,7 @@ describe("login (device flow)", () => {
 
   it("--force replaces a valid key and revokes the old one", async () => {
     const oldKey = mock.issueKey();
-    const store = new CredentialStore(join(home, ".config", "tourclaim", "credentials.json"), process.platform, () => {});
+    const store = new CredentialStore(credPath(home), process.platform, () => {});
     await store.set(mock.url, { api_key: oldKey, expires_at: null, grant_id: null, scopes: [] });
     mock.deviceScript = ["approve"];
     const r = await runCli(["login", "--force", "--no-browser"], { home, apiUrl: mock.url });
@@ -179,7 +179,7 @@ describe("login (device flow)", () => {
   it("--force keeps the drafts started with the old key reachable", async () => {
     mock.deviceScript = ["approve"];
     assert.equal((await runCli(["login", "--no-browser"], { home, apiUrl: mock.url })).code, 0);
-    const store = new CredentialStore(join(home, ".config", "tourclaim", "credentials.json"), process.platform, () => {});
+    const store = new CredentialStore(credPath(home), process.platform, () => {});
     const oldKey = (await store.get(mock.url))!.api_key;
     const started = await runCli(["intake", "start", "--json", "--set", "merchant_name=Example Air"], { home, apiUrl: mock.url });
     const id = started.json().id;
@@ -228,7 +228,7 @@ describe("login --with-token", () => {
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout, /Signed in as pat@example\.com \(key expires/);
     assert.ok(!r.stdout.includes(key));
-    const saved = JSON.parse(await readFile(join(home, ".config", "tourclaim", "credentials.json"), "utf8"));
+    const saved = JSON.parse(await readFile(credPath(home), "utf8"));
     assert.equal(saved[mock.url].api_key, key);
     assert.deepEqual(saved[mock.url].scopes, ["claims:read"]);
     assert.equal(saved[mock.url].grant_id, mock.keyRecord(key)?.id);
@@ -249,7 +249,7 @@ describe("login --with-token", () => {
     const r = await runCli(["login", "--with-token"], { home, apiUrl: mock.url, stdin: key });
     assert.equal(r.code, 3);
     assert.ok(!r.stderr.includes(key));
-    await assert.rejects(stat(join(home, ".config", "tourclaim", "credentials.json")));
+    await assert.rejects(stat(credPath(home)));
   });
 
   it("rejects text that is not a key", async () => {
@@ -271,7 +271,7 @@ describe("credentials", () => {
   beforeEach(async () => ({ home, cleanup } = await tempHome()));
   afterEach(() => cleanup());
 
-  const storeFor = (h: string) => new CredentialStore(join(h, ".config", "tourclaim", "credentials.json"), process.platform, () => {});
+  const storeFor = (h: string) => new CredentialStore(credPath(h), process.platform, () => {});
 
   it("TOURCLAIM_API_KEY takes precedence over the stored key", async () => {
     const stored = mock.issueKey({ traveler: "stored@example.com" });
@@ -297,7 +297,7 @@ describe("credentials", () => {
   });
 
   it("tightens an existing credentials file and directory to 0600/0700", { skip: isWindows }, async () => {
-    const dir = join(home, ".config", "tourclaim");
+    const dir = dirname(credPath(home));
     await mkdir(dir, { recursive: true });
     await chmod(dir, 0o755);
     await writeFile(join(dir, "credentials.json"), "{}", { mode: 0o644 });
@@ -309,7 +309,7 @@ describe("credentials", () => {
   it("warns when the credentials file is readable by others", { skip: isWindows }, async () => {
     const key = mock.issueKey();
     await storeFor(home).set(mock.url, { api_key: key, expires_at: null, grant_id: null, scopes: [] });
-    await chmod(join(home, ".config", "tourclaim", "credentials.json"), 0o644);
+    await chmod(credPath(home), 0o644);
     const r = await runCli(["status"], { home, apiUrl: mock.url });
     assert.match(r.stderr, /can be read by other users/);
   });
@@ -330,10 +330,14 @@ describe("credentials", () => {
 
   it("uses XDG_CONFIG_HOME, and %APPDATA% on Windows", async () => {
     const { credentialsPath } = await import("../src/credentials.js");
-    assert.equal(credentialsPath({ XDG_CONFIG_HOME: "/x/cfg" }, "linux", "/home/p"), join("/x/cfg", "tourclaim", "credentials.json"));
-    assert.equal(credentialsPath({}, "darwin", "/Users/p"), join("/Users/p", ".config", "tourclaim", "credentials.json"));
-    assert.equal(credentialsPath({ XDG_CONFIG_HOME: "relative" }, "linux", "/home/p"), join("/home/p", ".config", "tourclaim", "credentials.json"));
-    assert.ok(credentialsPath({ APPDATA: "C:\\Users\\p\\AppData\\Roaming" }, "win32", "C:\\Users\\p").includes("tourclaim"));
+    assert.equal(credentialsPath({ XDG_CONFIG_HOME: "/x/cfg" }, "linux", "/home/p"), "/x/cfg/tourclaim/credentials.json");
+    assert.equal(credentialsPath({}, "darwin", "/Users/p"), "/Users/p/.config/tourclaim/credentials.json");
+    assert.equal(credentialsPath({ XDG_CONFIG_HOME: "relative" }, "linux", "/home/p"), "/home/p/.config/tourclaim/credentials.json");
+    assert.equal(
+      credentialsPath({ APPDATA: "C:\\Users\\p\\AppData\\Roaming", XDG_CONFIG_HOME: "/ignored" }, "win32", "C:\\Users\\p"),
+      "C:\\Users\\p\\AppData\\Roaming\\tourclaim\\credentials.json",
+    );
+    assert.equal(credentialsPath({}, "win32", "C:\\Users\\p"), "C:\\Users\\p\\AppData\\Roaming\\tourclaim\\credentials.json");
   });
 });
 
@@ -350,7 +354,7 @@ describe("logout and status", () => {
   afterEach(() => cleanup());
 
   const save = (key: string) =>
-    new CredentialStore(join(home, ".config", "tourclaim", "credentials.json"), process.platform, () => {}).set(mock.url, {
+    new CredentialStore(credPath(home), process.platform, () => {}).set(mock.url, {
       api_key: key,
       expires_at: null,
       grant_id: null,
@@ -364,7 +368,7 @@ describe("logout and status", () => {
     assert.equal(r.code, 0, r.stderr);
     assert.deepEqual(r.json(), { api_url: mock.url, revoked: true, already_invalid: false, credential_removed: true, key_source: "stored" });
     assert.equal(mock.keyRecord(key)?.revoked, true);
-    await assert.rejects(stat(join(home, ".config", "tourclaim", "credentials.json")));
+    await assert.rejects(stat(credPath(home)));
   });
 
   it("logout removes the stored key even when the server says 401", async () => {
@@ -374,7 +378,7 @@ describe("logout and status", () => {
     const r = await runCli(["logout"], { home, apiUrl: mock.url });
     assert.equal(r.code, 0, r.stderr);
     assert.match(r.stdout, /already expired or revoked/);
-    await assert.rejects(stat(join(home, ".config", "tourclaim", "credentials.json")));
+    await assert.rejects(stat(credPath(home)));
   });
 
   it("logout keeps the key when the server cannot be reached", async () => {
@@ -385,7 +389,7 @@ describe("logout and status", () => {
       const r = await runCli(["logout"], { home, apiUrl: mock.url });
       assert.equal(r.code, 7);
       assert.match(r.stderr, /still stored/);
-      await stat(join(home, ".config", "tourclaim", "credentials.json"));
+      await stat(credPath(home));
     } finally {
       mock.enabled = true;
     }

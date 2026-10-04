@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
-import { spawnCli, tempHome, type CliResult } from "./harness.js";
+import { credPath, spawnCli, tempHome, type CliResult } from "./harness.js";
 import { MockServer } from "./mock-server.js";
 
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aY1EAAAAASUVORK5CYII=", "base64");
@@ -46,7 +46,7 @@ describe("end to end (dist/cli.js)", () => {
     assert.equal(signedIn.json().event, "signed_in");
     assert.equal(signedIn.json().account_email, "pat@example.com");
 
-    const credentials = join(home, ".config", "tourclaim", "credentials.json");
+    const credentials = credPath(home);
     if (process.platform !== "win32") assert.equal((await stat(credentials)).mode & 0o777, 0o600);
     const key: string = JSON.parse(await readFile(credentials, "utf8"))[mock.url].api_key;
     assert.match(key, /^tc_muse_/);

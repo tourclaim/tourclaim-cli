@@ -1,0 +1,6 @@
+# LF everywhere, including Windows checkouts: the tests compare text, and the
+# CLI's shebang line must end in LF to run on Linux and macOS.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.pdf binary

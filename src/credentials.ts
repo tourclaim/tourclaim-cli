@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
-import { dirname, join, isAbsolute } from "node:path";
+import { dirname, join, posix, win32 } from "node:path";
 import { CliError } from "./errors.js";
 
 /** What is saved per API base URL. */
@@ -19,11 +19,11 @@ type CredentialFile = Record<string, StoredCredential>;
  */
 export function credentialsPath(env: Record<string, string | undefined>, platform: NodeJS.Platform, home: string): string {
   if (platform === "win32") {
-    const appData = env.APPDATA && isAbsolute(env.APPDATA) ? env.APPDATA : join(home, "AppData", "Roaming");
-    return join(appData, "tourclaim", "credentials.json");
+    const appData = env.APPDATA && win32.isAbsolute(env.APPDATA) ? env.APPDATA : win32.join(home, "AppData", "Roaming");
+    return win32.join(appData, "tourclaim", "credentials.json");
   }
-  const xdg = env.XDG_CONFIG_HOME && isAbsolute(env.XDG_CONFIG_HOME) ? env.XDG_CONFIG_HOME : join(home, ".config");
-  return join(xdg, "tourclaim", "credentials.json");
+  const xdg = env.XDG_CONFIG_HOME && posix.isAbsolute(env.XDG_CONFIG_HOME) ? env.XDG_CONFIG_HOME : posix.join(home, ".config");
+  return posix.join(xdg, "tourclaim", "credentials.json");
 }
 
 async function readFile(path: string, platform: NodeJS.Platform, warn: (msg: string) => void): Promise<CredentialFile> {
