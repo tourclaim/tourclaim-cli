@@ -193,6 +193,7 @@ class MockServer:
         auto_sign_after_reads: Optional[int] = None,
         no_conflict_header: bool = False,
         relative_discovery: bool = False,
+        legacy_schema: bool = False,
         send_complete_uri: bool = False,
         reject_bad_bearer: bool = False,
         traveler: str = "pat@example.com",
@@ -206,6 +207,8 @@ class MockServer:
         self.auto_sign_after_reads = auto_sign_after_reads
         self.no_conflict_header = no_conflict_header
         self.relative_discovery = relative_discovery
+        #: Behave like a server from before 1.57.1: no openapi-cli.json, and openapi.json lists every operation.
+        self.legacy_schema = legacy_schema
         #: Behave like a server from before the security review: also send verification_uri_complete.
         self.send_complete_uri = send_complete_uri
         #: Answer 401 to a token poll whose bearer key is not a live key (the contract allows ignoring it instead).
@@ -269,6 +272,14 @@ class MockServer:
             self._server.shutdown()
             self._server.server_close()
             self._server = None
+
+    def assistant_schema(self) -> Dict[str, Any]:
+        """openapi.json: the full schema without the three operations only the CLI uses."""
+        copy = json.loads(json.dumps(self.openapi))
+        paths = copy.get("paths", {})
+        paths.get("/api/connectors/v1/intakes", {}).pop("get", None)
+        paths.pop("/api/connectors/v1/key", None)
+        return copy
 
     # ---- test controls ----
 
@@ -377,8 +388,14 @@ class MockServer:
             }
             if not self.relative_discovery:
                 info["cli_login_url"] = f"{base}/connect/cli"
+                if not self.legacy_schema:
+                    info["cli_openapi_url"] = f"{base}/api/connectors/v1/openapi-cli.json"
             return info
         if path == "/api/connectors/v1/openapi.json" and method == "GET":
+            return self.openapi if self.legacy_schema else self.assistant_schema()
+        if path == "/api/connectors/v1/openapi-cli.json" and method == "GET":
+            if self.legacy_schema:
+                raise fail(404, "Not Found")
             return self.openapi
         if path == "/connect/cli" and method == "GET":
             return self._browser_approve(r.q("code"))

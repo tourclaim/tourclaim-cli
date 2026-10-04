@@ -75,7 +75,7 @@ Every command takes `--json` (one JSON value per line on stdout, errors as one J
 | `tourclaim cards search <name>` | Find a card product id. |
 | `tourclaim intake start\|list\|show\|set\|attach\|add-email\|sign\|submit\|delete` | The whole draft lifecycle. |
 | `tourclaim claims list\|show` | Submitted claims and their status. |
-| `tourclaim schema` | The live OpenAPI document. |
+| `tourclaim schema` | The live OpenAPI document with every operation the CLI uses (`openapi-cli.json`; `openapi.json` on older servers). |
 
 ### Exit codes
 

@@ -3,6 +3,7 @@ import itertools
 import json
 import os
 import re
+import urllib.request
 
 import pytest
 from conftest import PDF, PNG, run_cli, save_key
@@ -846,11 +847,36 @@ def test_cards_search_and_refuses_card_numbers(s, mock):
     assert 'No cards matched "zzz"' in s.cli(["cards", "search", "zzz"]).stdout
 
 
-def test_schema_prints_the_live_openapi_without_a_key(mock, tmp_path_factory):
+def test_schema_prints_the_full_cli_schema_without_a_key(mock, tmp_path_factory):
     empty = str(tmp_path_factory.mktemp("schema"))
+    before = len(mock.requests)
     r = run_cli(["schema", "--json"], home=empty, api_url=mock.url)
     assert r.code == 0, r.stderr
     assert r.json()["openapi"] == "3.1.0"
     assert r.json()["info"]["title"] == "TourClaim by Copernican"
+    assert "get" in r.json()["paths"]["/api/connectors/v1/intakes"], "the drafts list is in the CLI schema"
+    assert "/api/connectors/v1/key" in r.json()["paths"], "the key endpoints are in the CLI schema"
+    assert [q.path for q in mock.requests[before:]] == ["/api/connectors/v1/openapi-cli.json"]
+    assert "authorization" not in mock.requests[-1].headers
     human = run_cli(["schema"], home=empty, api_url=mock.url)
     assert human.stdout.startswith("{\n  ")
+
+
+def test_schema_falls_back_to_openapi_json_on_a_server_without_openapi_cli_json(tmp_path_factory):
+    old = MockServer(legacy_schema=True)
+    old.start()
+    try:
+        r = run_cli(["schema"], home=str(tmp_path_factory.mktemp("legacy")), api_url=old.url)
+        assert r.code == 0, r.stderr
+        assert json.loads(r.stdout)["info"]["title"] == "TourClaim by Copernican"
+        assert [q.path for q in old.requests] == ["/api/connectors/v1/openapi-cli.json", "/api/connectors/v1/openapi.json"]
+    finally:
+        old.stop()
+
+
+def test_the_assistant_schema_leaves_out_the_cli_only_operations(mock):
+    with urllib.request.urlopen(f"{mock.url}/api/connectors/v1/openapi.json", timeout=10) as response:
+        assistant = json.loads(response.read().decode("utf-8"))
+    assert "get" not in assistant["paths"]["/api/connectors/v1/intakes"]
+    assert "/api/connectors/v1/key" not in assistant["paths"]
+    assert sum(len(ops) for ops in assistant["paths"].values()) == 10

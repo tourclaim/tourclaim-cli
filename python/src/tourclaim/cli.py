@@ -756,7 +756,11 @@ def run_status(ctx: Context, args: Args) -> int:
                     "version": info.get("version"),
                     "enabled": info.get("enabled"),
                     "mode": info.get("mode"),
-                    "openapi_url": absolute_url(ctx.api_url, info.get("openapi_url") or f"{API_PREFIX}/openapi.json"),
+                    # The full schema the CLI uses, when the server has it; else the assistants' one.
+                    "openapi_url": absolute_url(
+                        ctx.api_url, info.get("cli_openapi_url") or info.get("openapi_url") or f"{API_PREFIX}/openapi.json"
+                    ),
+                    "assistant_openapi_url": absolute_url(ctx.api_url, info.get("openapi_url") or f"{API_PREFIX}/openapi.json"),
                     "connection_url": connection_url,
                     "documentation_url": absolute_url(ctx.api_url, info.get("documentation_url") or "/muse/developers"),
                     "cli_login_url": absolute_url(ctx.api_url, info.get("cli_login_url") or "/connect/cli"),
@@ -1637,7 +1641,13 @@ COMMANDS: List[Command] = [
         path=["schema"],
         summary="Print the live OpenAPI schema",
         usage="tourclaim schema [--json]",
-        description=f"Fetches {API_PREFIX}/openapi.json (no sign-in needed) and prints it: indented by default, one line with --json.",
+        description="\n".join(
+            [
+                f"Fetches the full schema the CLI uses, {API_PREFIX}/openapi-cli.json, and prints it: indented by default, one line",
+                f"with --json. No sign-in needed. From a server that does not have it yet, it prints {API_PREFIX}/openapi.json.",
+                f"{API_PREFIX}/openapi.json itself lists only the ten operations assistants load as tools.",
+            ]
+        ),
         max_args=0,
         run=run_schema,
     ),

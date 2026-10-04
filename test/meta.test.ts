@@ -42,7 +42,7 @@ describe("package", () => {
   });
 
   it("uses no em dashes in docs or source", () => {
-    const files = ["README.md", "AGENTS.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md"];
+    const files = ["README.md", "AGENTS.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md", "openapi/README.md"];
     for (const dir of ["src", "src/commands", "test"]) {
       for (const name of readdirSync(join(ROOT, dir))) if (name.endsWith(".ts")) files.push(join(dir, name));
     }

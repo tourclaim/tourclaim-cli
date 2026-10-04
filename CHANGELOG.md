@@ -13,7 +13,7 @@ First release. The TourClaim connector API runs in review mode: claims are synth
 - `tourclaim status` (alias `whoami`) shows the API mode, the signed-in account and key expiry.
 - `tourclaim cards search` to find the card a booking was paid with.
 - `tourclaim intake start|list|show|set|attach|add-email|sign|submit|delete` for the whole draft lifecycle, with optimistic revisions, idempotent creation, consent prompts for evidence, `.eml` parsing, and waiting for the traveler's signature. `intake list` finds open drafts started from any `tourclaim login` on the account.
-- `tourclaim claims list|show` and `tourclaim schema`.
+- `tourclaim claims list|show`, and `tourclaim schema`, which prints the full schema the CLI uses (`/api/connectors/v1/openapi-cli.json`, or `/openapi.json` on older servers).
 - `--json` output on every command, JSON errors on stderr, documented exit codes, and the API's `X-TourClaim-Error` cause as the error code for conflicts.
 - Credentials stored per API URL with mode 0600, `TOURCLAIM_API_KEY` and `TOURCLAIM_API_URL` overrides, and a warning when the key expires within 3 days.
 - One automatic retry after a rate limit, honoring `Retry-After` up to 60 seconds.

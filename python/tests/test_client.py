@@ -132,7 +132,10 @@ def test_full_claim_through_the_library(client, mock):
 def test_discovery_and_schema_need_no_key(mock):
     c = Client(api_url=mock.url, load_credentials=False)
     assert c.connector_info()["cli_login_url"] == f"{mock.url}/connect/cli"
-    assert c.schema()["openapi"] == "3.1.0"
+    full = c.schema()
+    assert full["openapi"] == "3.1.0" and "/api/connectors/v1/key" in full["paths"]
+    assert mock.requests[-1].path == "/api/connectors/v1/openapi-cli.json"
+    assert c.connector_info()["cli_openapi_url"] == f"{mock.url}/api/connectors/v1/openapi-cli.json"
     assert c.mode == "review"
     assert not c.has_api_key
     with pytest.raises(NotSignedInError) as caught:

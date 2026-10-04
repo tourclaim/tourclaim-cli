@@ -619,7 +619,8 @@ describe("logout and status", () => {
     assert.equal(s.enabled, true);
     assert.equal(s.signed_in, true);
     assert.equal(s.account_email, "pat@example.com");
-    assert.equal(s.connector.openapi_url, `${mock.url}/api/connectors/v1/openapi.json`);
+    assert.equal(s.connector.openapi_url, `${mock.url}/api/connectors/v1/openapi-cli.json`, "the CLI's schema when the server has it");
+    assert.equal(s.connector.assistant_openapi_url, `${mock.url}/api/connectors/v1/openapi.json`);
     assert.equal(s.connector.cli_login_url, `${mock.url}/connect/cli`);
   });
 

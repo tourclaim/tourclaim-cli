@@ -822,13 +822,45 @@ describe("intake and claims", () => {
       assert.equal(number.code, 2);
     });
 
-    it("prints the live OpenAPI schema without a key", async () => {
+    it("prints the full CLI schema (openapi-cli.json) without a key", async () => {
       const empty = await tempHome();
+      const before = mock.requests.length;
       const r = await runCli(["schema", "--json"], { home: empty.home, apiUrl: mock.url });
       assert.equal(r.code, 0, r.stderr);
       assert.equal(r.json().openapi, "3.1.0");
       assert.equal(r.json().info.title, "TourClaim by Copernican");
+      assert.ok(r.json().paths["/api/connectors/v1/intakes"].get, "the drafts list is in the CLI schema");
+      assert.ok(r.json().paths["/api/connectors/v1/key"], "the key endpoints are in the CLI schema");
+      const asked = mock.requests.slice(before).map((q) => q.path);
+      assert.deepEqual(asked, ["/api/connectors/v1/openapi-cli.json"]);
+      assert.equal(mock.requests.at(-1)?.headers.authorization, undefined);
       await empty.cleanup();
+    });
+
+    it("falls back to openapi.json on a server without openapi-cli.json", async () => {
+      const old = new MockServer({ legacySchema: true });
+      await old.start();
+      const empty = await tempHome();
+      try {
+        const r = await runCli(["schema"], { home: empty.home, apiUrl: old.url });
+        assert.equal(r.code, 0, r.stderr);
+        assert.equal(JSON.parse(r.stdout).info.title, "TourClaim by Copernican");
+        assert.deepEqual(
+          old.requests.map((q) => q.path),
+          ["/api/connectors/v1/openapi-cli.json", "/api/connectors/v1/openapi.json"],
+        );
+      } finally {
+        await old.stop();
+        await empty.cleanup();
+      }
+    });
+
+    it("the assistants' schema (openapi.json) leaves out the CLI-only operations", async () => {
+      const assistant = (await (await fetch(`${mock.url}/api/connectors/v1/openapi.json`)).json()) as { paths: Record<string, Record<string, unknown>> };
+      assert.equal(assistant.paths["/api/connectors/v1/intakes"]?.get, undefined);
+      assert.equal(assistant.paths["/api/connectors/v1/key"], undefined);
+      const operations = Object.values(assistant.paths).flatMap((ops) => Object.keys(ops));
+      assert.equal(operations.length, 10);
     });
   });
 });

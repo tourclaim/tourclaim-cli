@@ -17,7 +17,7 @@ With the mock running, set `TOURCLAIM_API_URL=http://127.0.0.1:4010` and use `no
 - No runtime dependencies. Use Node's built-ins (`fetch`, `node:util` `parseArgs`, `node:crypto`, `node:fs`) and keep Node 18.3 working.
 - Never print, log or accept on the command line an API key. Never share evidence without consent, and never sign for the traveler.
 - Keep `--json` output and exit codes stable; document any change in README.md and CHANGELOG.md.
-- When the API changes, update `openapi/connectors-v1.json` (`tourclaim schema > openapi/connectors-v1.json`), the types in `src/types.ts` and `src/fields.ts`, and the mock in `test/mock-server.ts`. `test/meta.test.ts` checks the field lists against the schema.
+- When the API changes, update `openapi/connectors-v1.json` from `/api/connectors/v1/openapi-cli.json` (`tourclaim schema > openapi/connectors-v1.json` fetches it), the types in `src/types.ts` and `src/fields.ts`, and the mock in `test/mock-server.ts`. `test/meta.test.ts` checks the field lists against the schema.
 - Write plain, direct prose in docs and messages.
 - Pin GitHub Actions to a full commit SHA with the version in a comment; Dependabot keeps them current.
 

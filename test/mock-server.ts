@@ -17,7 +17,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const OPENAPI = JSON.parse(readFileSync(join(ROOT, "openapi", "connectors-v1.json"), "utf8")) as unknown;
+/** The full schema (openapi-cli.json), as checked in. */
+const OPENAPI = JSON.parse(readFileSync(join(ROOT, "openapi", "connectors-v1.json"), "utf8")) as { paths: Record<string, Record<string, unknown>> };
+
+/** openapi.json: the same schema without the three operations only the CLI uses. */
+function assistantSchema(): unknown {
+  const copy = JSON.parse(JSON.stringify(OPENAPI)) as typeof OPENAPI;
+  delete copy.paths["/api/connectors/v1/intakes"]?.get;
+  delete copy.paths["/api/connectors/v1/key"];
+  return copy;
+}
 const ALL_SCOPES = ["intakes:write", "evidence:write", "claims:submit", "claims:read"];
 const MAX_BODY = 8 * 1024 * 1024;
 
@@ -108,6 +117,8 @@ export interface MockOptions {
   noConflictHeader?: boolean;
   /** Behave like a server from before absolute discovery URLs. */
   relativeDiscovery?: boolean;
+  /** Behave like a server from before 1.57.1: no openapi-cli.json, and openapi.json lists every operation. */
+  legacySchema?: boolean;
   /** Behave like a server from before the security review: also send verification_uri_complete. */
   sendCompleteUri?: boolean;
   /** Answer 401 to a token poll whose bearer key is not a live key (the contract allows ignoring it instead). */
@@ -357,12 +368,17 @@ export class MockServer {
         enabled: this.enabled,
         mode: this.mode,
         openapi_url: `${base}/api/connectors/v1/openapi.json`,
+        ...(this.options.legacySchema || this.options.relativeDiscovery ? {} : { cli_openapi_url: `${base}/api/connectors/v1/openapi-cli.json` }),
         connection_url: `${base}/connect/muse`,
         ...(this.options.relativeDiscovery ? {} : { cli_login_url: `${base}/connect/cli` }),
         documentation_url: `${base}/muse/developers`,
       };
     }
-    if (path === "/api/connectors/v1/openapi.json" && method === "GET") return OPENAPI;
+    if (path === "/api/connectors/v1/openapi.json" && method === "GET") return this.options.legacySchema ? OPENAPI : assistantSchema();
+    if (path === "/api/connectors/v1/openapi-cli.json" && method === "GET") {
+      if (this.options.legacySchema) throw fail(404, "Not Found");
+      return OPENAPI;
+    }
     if (path === "/connect/cli" && method === "GET") return this.browserApprove(url.searchParams.get("code"));
     if (path === "/connect/muse" && method === "GET") return this.browserSign(url.searchParams.get("intake"));
 

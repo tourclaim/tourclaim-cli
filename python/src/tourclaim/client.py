@@ -129,6 +129,11 @@ def sentences(*parts: Optional[str]) -> str:
     return " ".join(out)
 
 
+#: Every operation, including the drafts list and the key endpoints the CLI uses.
+CLI_SCHEMA_PATH = f"{API_PREFIX}/openapi-cli.json"
+#: The ten operations assistants load as tools; servers before 1.57.1 serve everything here.
+ASSISTANT_SCHEMA_PATH = f"{API_PREFIX}/openapi.json"
+
 #: Statuses that mean "try again shortly": a gateway timeout or error at the
 #: edge, or the server's 503 for a brief database lock clash.
 TRANSIENT_STATUSES = (502, 503, 504)
@@ -471,8 +476,15 @@ class Client:
         return self.request("GET", API_PREFIX, auth=False).data
 
     def schema(self) -> Dict[str, Any]:
-        """The live OpenAPI document. No key needed."""
-        return self.request("GET", f"{API_PREFIX}/openapi.json", auth=False).data
+        """The live OpenAPI document with every operation, as the CLI uses them
+        (``/api/connectors/v1/openapi-cli.json``). A server that does not have it
+        yet (before 1.57.1) answers 404, and then ``/openapi.json`` is returned
+        instead. ``/openapi.json`` itself lists only the ten operations assistants
+        load as tools. No key needed."""
+        try:
+            return self.request("GET", CLI_SCHEMA_PATH, auth=False).data
+        except NotFoundError:
+            return self.request("GET", ASSISTANT_SCHEMA_PATH, auth=False).data
 
     # ---- the key ----
 

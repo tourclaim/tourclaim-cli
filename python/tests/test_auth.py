@@ -641,7 +641,8 @@ def test_whoami_is_an_alias_and_json_carries_account_and_mode(mock, home):
     s = r.json()
     assert s["mode"] == "review" and s["enabled"] is True and s["signed_in"] is True
     assert s["account_email"] == "pat@example.com"
-    assert s["connector"]["openapi_url"] == f"{mock.url}/api/connectors/v1/openapi.json"
+    assert s["connector"]["openapi_url"] == f"{mock.url}/api/connectors/v1/openapi-cli.json", "the CLI's schema when the server has it"
+    assert s["connector"]["assistant_openapi_url"] == f"{mock.url}/api/connectors/v1/openapi.json"
     assert s["connector"]["cli_login_url"] == f"{mock.url}/connect/cli"
     assert s["credentials_path"] == creds_file(home)
 

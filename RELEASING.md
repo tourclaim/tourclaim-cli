@@ -29,6 +29,17 @@ npm only allows trusted publishing for a package that already exists, so the fir
 
 4. Optionally, under **Settings > Publishing access**, require two-factor authentication and disallow tokens, so only the workflow can publish.
 
+## The schema snapshot
+
+`openapi/connectors-v1.json` is a copy of the full schema the CLI uses, served at `/api/connectors/v1/openapi-cli.json` (`/api/connectors/v1/openapi.json` lists only the ten operations assistants load as tools). The types, the field tables and the test mock are checked against it. Refresh it after a server deploy that changes the API, then run the tests:
+
+```sh
+node dist/cli.js schema --api-url https://app.getcopernican.com > openapi/connectors-v1.json
+npm test
+```
+
+The current copy was taken from the server's review-mode snapshot before release 1.57.1 was deployed. Refresh it from production once 1.57.1 is live.
+
 ## Every later release
 
 1. Move the `Unreleased` notes in [CHANGELOG.md](CHANGELOG.md) under a new version heading with today's date, and commit.

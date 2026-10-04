@@ -1,7 +1,9 @@
 """Shapes of the TourClaim connector API, as typed dictionaries.
 
-Written by hand from the OpenAPI document served at
-``/api/connectors/v1/openapi.json``. Responses are returned as plain ``dict``
+Written by hand from ``openapi/connectors-v1.json``, a snapshot of the full
+schema the CLI uses, served at ``/api/connectors/v1/openapi-cli.json``
+(``/api/connectors/v1/openapi.json`` lists only the ten operations assistants
+load as tools). Responses are returned as plain ``dict``
 objects; these types describe them for editors and type checkers. The device
 authorization endpoints (``/api/connectors/device/*``) are not part of that
 schema; their shapes follow RFC 8628.
@@ -143,8 +145,11 @@ class _ConnectorInfoRequired(TypedDict):
 
 
 class ConnectorInfo(_ConnectorInfoRequired, total=False):
-    """``GET /api/connectors/v1``. URLs are absolute (older servers sent paths)."""
+    """``GET /api/connectors/v1``. URLs are absolute (older servers sent paths).
+    ``openapi_url`` lists the ten operations assistants load as tools;
+    ``cli_openapi_url`` (servers from 1.57.1) lists every operation."""
 
+    cli_openapi_url: str
     cli_login_url: str
 
 

@@ -451,7 +451,9 @@ export const status: Command = {
           version: info.version,
           enabled: info.enabled,
           mode: info.mode,
-          openapi_url: absoluteUrl(ctx.apiUrl, info.openapi_url),
+          // The full schema the CLI uses, when the server has it; else the assistants' one.
+          openapi_url: absoluteUrl(ctx.apiUrl, info.cli_openapi_url || info.openapi_url),
+          assistant_openapi_url: absoluteUrl(ctx.apiUrl, info.openapi_url),
           connection_url: connectionUrl,
           documentation_url: absoluteUrl(ctx.apiUrl, info.documentation_url),
           cli_login_url: absoluteUrl(ctx.apiUrl, info.cli_login_url || "/connect/cli"),
