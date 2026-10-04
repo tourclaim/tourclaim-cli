@@ -17,7 +17,7 @@ describe("package", () => {
     assert.equal(pkg.name, "tourclaim");
     assert.equal(pkg.version, VERSION);
     assert.deepEqual(pkg.bin, { tourclaim: "dist/cli.js" });
-    assert.equal(pkg.engines.node, ">=18");
+    assert.equal(pkg.engines.node, ">=18.3");
     assert.equal(pkg.license, "MIT");
     assert.equal(pkg.dependencies, undefined);
     assert.deepEqual(Object.keys(pkg.devDependencies).sort(), ["@types/node", "typescript"]);
