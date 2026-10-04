@@ -47,6 +47,7 @@ describe("intake and claims", () => {
       scopes: [],
     });
     mock.rateLimit = { remaining: 0, retryAfter: "1" };
+    mock.inject = [];
     mock.onRequest = null;
     mock.enabled = true;
   });
@@ -102,6 +103,14 @@ describe("intake and claims", () => {
       assert.equal(different.jsonError().code, "conflict");
       assert.equal(different.jsonError().idempotency_key, "retry-key-0001");
       assert.match(different.jsonError().message, /new --idempotency-key/);
+    });
+
+    it("on a concurrent-request 409, says to retry with the same key rather than a new one", async () => {
+      mock.inject.push({ status: 409, body: { detail: "Concurrent request; retry with the same idempotency key" } });
+      const r = await cli(["intake", "start", "--json", "--idempotency-key", "concurrent-0001"]);
+      assert.equal(r.code, 4);
+      assert.match(r.jsonError().message, /Retry with the same fields and --idempotency-key concurrent-0001/);
+      assert.doesNotMatch(r.jsonError().message, /new --idempotency-key/);
     });
 
     it("rejects a malformed --idempotency-key before calling the API", async () => {

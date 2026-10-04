@@ -125,9 +125,10 @@ export const intakeStart: Command = {
     } catch (error) {
       if (error instanceof CliError) {
         error.extra.idempotency_key = key;
-        if (error instanceof ApiError && error.status === 409) {
+        const transient = error instanceof ApiError && error.status === 409 && /concurrent|retry/i.test(String(error.detail ?? ""));
+        if (error instanceof ApiError && error.status === 409 && !transient) {
           error.message = `${error.message.replace(/\.?$/, ".")} Use a new --idempotency-key (or leave it out) to start a different draft.`;
-        } else if (!(error instanceof ApiError) || error.status >= 429) {
+        } else if (transient || !(error instanceof ApiError) || error.status >= 429) {
           error.message = `${error.message} The draft may or may not have been created. Retry with the same fields and --idempotency-key ${key} so a duplicate is not created.`;
         }
       }

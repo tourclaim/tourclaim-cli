@@ -183,6 +183,8 @@ export class MockServer {
   deviceScript: string[] = [];
   /** Called for every request before it is handled. */
   onRequest: ((request: RecordedRequest) => void) | null = null;
+  /** Responses returned, in order, to the next connector requests instead of handling them. */
+  inject: Array<{ status: number; body: unknown; headers?: Record<string, string> }> = [];
   private server: Server | null = null;
   private claimSeq = 0;
 
@@ -346,6 +348,9 @@ export class MockServer {
         this.rateLimit.retryAfter === null ? {} : { "Retry-After": this.rateLimit.retryAfter },
       );
     }
+
+    const injected = this.inject.shift();
+    if (injected) throw new HttpError(injected.status, injected.body, injected.headers);
 
     if (path === "/api/connectors/device/code" && method === "POST") return this.deviceCode(r.body);
     if (path === "/api/connectors/device/token" && method === "POST") return this.deviceToken(r.body);
