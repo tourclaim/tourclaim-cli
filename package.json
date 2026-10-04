@@ -1,0 +1,54 @@
+{
+  "name": "tourclaim",
+  "version": "0.1.0",
+  "description": "Command-line client for TourClaim: start, fill in and submit a trip cancellation claim against the travel insurance that comes with your credit card, from a terminal or an AI agent.",
+  "keywords": [
+    "tourclaim",
+    "copernican",
+    "travel insurance",
+    "trip cancellation",
+    "trip interruption",
+    "claims",
+    "insurance claims",
+    "credit card benefits",
+    "ai agents",
+    "agent tools",
+    "mcp",
+    "cli"
+  ],
+  "homepage": "https://github.com/tourclaim/tourclaim-cli#readme",
+  "bugs": {
+    "url": "https://github.com/tourclaim/tourclaim-cli/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tourclaim/tourclaim-cli.git"
+  },
+  "license": "MIT",
+  "author": "Copernican",
+  "type": "module",
+  "bin": {
+    "tourclaim": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "AGENTS.md",
+    "CHANGELOG.md",
+    "SECURITY.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "npm run build && node scripts/test.mjs",
+    "mock": "node scripts/test.mjs --build-only && node .build/test/mock-main.js",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.130",
+    "typescript": "^5.9.3"
+  }
+}
