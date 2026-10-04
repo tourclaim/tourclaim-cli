@@ -8,3 +8,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # @types/node tracks the oldest supported Node (18), so the types never
+      # offer an API that Node lacks. Raise it only with engines.node.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
