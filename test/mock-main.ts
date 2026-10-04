@@ -1,7 +1,7 @@
 // `npm run mock`: runs the mock API on http://127.0.0.1:4010 (or MOCK_PORT) for
-// trying the CLI by hand. The links the CLI prints stand in for the traveler's
-// browser: opening the sign-in link approves the sign-in (it is also approved
-// on its own after two polls), and opening a draft's review link signs it.
+// trying the CLI by hand. Its pages stand in for the traveler's browser: typing
+// the code into /connect/cli approves a sign-in (it is also approved on its own
+// after two polls), and opening a draft's review link signs it.
 import { MockServer } from "./mock-server.js";
 
 const mock = new MockServer({

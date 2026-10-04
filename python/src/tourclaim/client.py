@@ -454,7 +454,9 @@ class Client:
     # ---- the key ----
 
     def get_connection(self) -> KeyInfo:
-        """``get_connection``: the key's id, expiry, scopes and the traveler's email."""
+        """``get_connection``: the key's id, expiry and scopes. ``account_email`` is
+        set only for keys from ``tourclaim login`` (the device flow); it is null for
+        keys made at /connect/muse."""
         return self.request("GET", f"{API_PREFIX}/key").data
 
     def disconnect(self) -> None:
@@ -671,8 +673,9 @@ class Client:
     # ---- signing in with a device code (RFC 8628) ----
 
     def request_device_code(self, scopes: Optional[Sequence[str]] = None, *, client_name: Optional[str] = None) -> DeviceCode:
-        """Starts a sign-in. Show the traveler ``verification_uri`` and
-        ``user_code`` (or ``verification_uri_complete``); never show ``device_code``."""
+        """Starts a sign-in. Show the traveler ``verification_uri`` and ``user_code``:
+        they open the page and type the code. Never show ``device_code``, and never
+        put the code in a link."""
         body: Dict[str, Any] = {"client": client_name or self.user_agent}
         if scopes:
             for scope in scopes:
@@ -695,7 +698,7 @@ class Client:
             "device_code": code["device_code"],
             "user_code": code["user_code"],
             "verification_uri": code["verification_uri"],
-            "verification_uri_complete": code["verification_uri_complete"] if is_http_url(code.get("verification_uri_complete")) else None,
+            # Older servers also sent verification_uri_complete; it is ignored.
             "expires_in": code["expires_in"],
             "interval": interval if valid_interval else 5,
         }
@@ -729,7 +732,7 @@ class Client:
         if error == "slow_down":
             raise SlowDownError("Polling too fast; slow down.", status=400)
         if error == "access_denied":
-            raise AccessDeniedError(sentences("The sign-in was declined", description, "Nothing was saved"), status=400)
+            raise AccessDeniedError(sentences(description or "The sign-in was declined", "Nothing was saved."), status=400)
         if error == "expired_token":
             raise ExpiredTokenError("The sign-in code expired or was already used. Run tourclaim login again.", status=400)
         shown = error if isinstance(error, str) and error else f"HTTP {response.status}"
@@ -795,7 +798,8 @@ class Client:
             on_code(code)
         else:
             sys.stderr.write(
-                f"To connect to your TourClaim account, open {code['verification_uri']} and enter {code['user_code']}.\n"
+                f"To connect to your TourClaim account, open {code['verification_uri']}\n"
+                f"Enter this code on that page: {code['user_code']}\n"
             )
             sys.stderr.flush()
         token = self.wait_for_device_token(code, sleep=sleep, now=now)

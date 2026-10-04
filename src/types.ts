@@ -162,8 +162,8 @@ export interface KeyInfo {
   id: string;
   expires_at: string;
   scopes: string[];
-  /** The traveler account the key belongs to. */
-  account_email: string;
+  /** The traveler's email. Set only for keys from tourclaim login (device flow); null for keys made at /connect/muse. */
+  account_email?: string | null;
 }
 
 /** POST /api/connectors/device/code */
@@ -171,7 +171,6 @@ export interface DeviceCodeResponse {
   device_code: string;
   user_code: string;
   verification_uri: string;
-  verification_uri_complete?: string;
   expires_in: number;
   interval?: number;
 }

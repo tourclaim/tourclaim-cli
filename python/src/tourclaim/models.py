@@ -118,13 +118,18 @@ class CardResponse(_CardResponseRequired, total=False):
     coverage_status: Literal["requires_review"]
 
 
-class KeyInfo(TypedDict):
-    """``GET /api/connectors/v1/key``: the key making the request."""
-
+class _KeyInfoRequired(TypedDict):
     id: str
     expires_at: str
     scopes: List[str]
-    account_email: str
+
+
+class KeyInfo(_KeyInfoRequired, total=False):
+    """``GET /api/connectors/v1/key``: the key making the request. ``account_email``
+    is set only for keys from ``tourclaim login`` (the device flow); it is null for
+    keys made at /connect/muse."""
+
+    account_email: Optional[str]
 
 
 class _ConnectorInfoRequired(TypedDict):
@@ -151,9 +156,9 @@ class _DeviceCodeRequired(TypedDict):
 
 
 class DeviceCode(_DeviceCodeRequired, total=False):
-    """``POST /api/connectors/device/code``. ``device_code`` is a secret: never show it."""
+    """``POST /api/connectors/device/code``. ``device_code`` is a secret: never show it.
+    The traveler types ``user_code`` at ``verification_uri``; there is no link with the code in it."""
 
-    verification_uri_complete: Optional[str]
     interval: int
 
 

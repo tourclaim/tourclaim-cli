@@ -38,8 +38,10 @@ describe("end to end (dist/cli.js)", () => {
     const login = spawnCli(["login", "--json", "--no-browser"], { home, env: env() });
     const first = JSON.parse(await login.firstLine);
     assert.equal(first.event, "device_code");
-    // The traveler opens the link in their browser and approves.
-    assert.equal((await fetch(first.verification_uri_complete)).status, 200);
+    // The traveler opens the page and types the code shown in the terminal.
+    assert.ok(!("verification_uri_complete" in first));
+    assert.match(await (await fetch(first.verification_uri)).text(), /Enter the code/);
+    assert.equal((await fetch(`${first.verification_uri}?code=${first.user_code.toLowerCase()}`)).status, 200);
     const signedIn = await login.done;
     outputs.push(signedIn);
     assert.equal(signedIn.code, 0, signedIn.stderr);
@@ -132,7 +134,7 @@ describe("end to end (dist/cli.js)", () => {
       const key = mock.issueKey({ traveler: "sam@example.com" });
       const r = await spawnCli(["login", "--with-token"], { home: other.home, env: env(), stdin: `${key}\n` }).done;
       assert.equal(r.code, 0, r.stderr);
-      assert.match(r.stdout, /Signed in as sam@example\.com/);
+      assert.match(r.stdout, /^Signed in \(key expires/m);
       assert.ok(!r.stdout.includes(key) && !r.stderr.includes(key));
     } finally {
       await other.cleanup();

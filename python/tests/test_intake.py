@@ -556,12 +556,21 @@ def test_sign_says_so_when_already_signed(s, mock):
 # ---- submit and claims ----
 
 
-def test_submit_refuses_an_unsigned_draft_locally_with_exit_4(s, mock):
+def test_submit_refuses_an_unsigned_draft_with_exit_4_and_the_review_link(s, mock):
     draft = s.start()
     r = s.cli(["intake", "submit", draft, "--json"])
     assert r.code == 4
     assert r.json_error()["code"] == "approval_required"
     assert r.json_error()["review_url"] == f"{mock.url}/connect/muse?intake={draft}"
+    assert mock.intakes[draft].claim_id is None
+
+
+def test_submit_refuses_an_incomplete_draft_locally_naming_what_is_missing(s, mock):
+    draft = s.start(["merchant_name=Example Air"])
+    r = s.cli(["intake", "submit", draft, "--json"])
+    assert r.code == 4
+    assert r.json_error()["code"] == "intake_incomplete"
+    assert "booking_ref" in r.json_error()["missing_fields"]
     assert mock.requests_to("POST", f"/api/connectors/v1/intakes/{draft}/submit") == []
 
 
@@ -696,6 +705,10 @@ def test_uses_the_x_tourclaim_error_code_as_the_json_error_code(s, mock):
     assert r.json_error()["current_revision"] == 1
     r = s.cli(["intake", "submit", draft, "--revision", "9", "--json"])
     assert r.code == 4
+    assert r.json_error()["code"] == "stale_revision"
+    assert "it is now at revision 1" in r.json_error()["message"]
+    r = s.cli(["intake", "submit", draft, "--revision", "1", "--json"])
+    assert r.code == 4
     assert r.json_error()["code"] == "approval_required"
     assert "has not signed revision 1" in r.json_error()["message"]
     assert r.json_error()["review_url"] == f"{mock.url}/connect/muse?intake={draft}"
@@ -715,7 +728,8 @@ def test_approval_outdated_asks_the_traveler_to_sign_again(s, mock):
     draft = s.start()
     mock.sign(draft)
     mock.intakes[draft].approval_outdated = True
-    r = s.cli(["intake", "submit", draft, "--revision", "1", "--json"])
+    # The draft now reads as needs_approval; only the API can say the signature is out of date.
+    r = s.cli(["intake", "submit", draft, "--json"])
     assert r.code == 4
     err = r.json_error()
     assert err["code"] == "approval_outdated"

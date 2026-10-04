@@ -23,9 +23,14 @@ def mock():
 
 
 def visit(url):
-    """The traveler opens a link in their browser."""
+    """The traveler opens a page in their browser."""
     with urllib.request.urlopen(url, timeout=10) as response:
         return response.status
+
+
+def page_text(url):
+    with urllib.request.urlopen(url, timeout=10) as response:
+        return response.read().decode("utf-8")
 
 
 def test_login_start_set_attach_add_email_sign_wait_submit_claims_list_logout(mock, home):
@@ -41,7 +46,10 @@ def test_login_start_set_attach_add_email_sign_wait_submit_claims_list_logout(mo
     login = spawn_cli(["login", "--json", "--no-browser"], home=home, env=env)
     first = json.loads(login.first_line())
     assert first["event"] == "device_code"
-    assert visit(first["verification_uri_complete"]) == 200
+    # The traveler opens the page and types the code shown in the terminal.
+    assert "verification_uri_complete" not in first
+    assert "Enter the code" in page_text(first["verification_uri"])
+    assert visit(f"{first['verification_uri']}?code={first['user_code'].lower()}") == 200
     signed_in = login.done()
     outputs.append(signed_in)
     assert signed_in.code == 0, signed_in.stderr
@@ -131,7 +139,7 @@ def test_reads_a_key_piped_to_login_with_token(mock, tmp_path):
     key = mock.issue_key(traveler="sam@example.com")
     r = spawn_cli(["login", "--with-token"], home=str(tmp_path), env={"TOURCLAIM_API_URL": mock.url}, stdin=f"{key}\n".encode()).done()
     assert r.code == 0, r.stderr
-    assert "Signed in as sam@example.com" in r.stdout
+    assert re.search(r"^Signed in \(key expires", r.stdout, re.M)
     assert key not in r.stdout and key not in r.stderr
 
 

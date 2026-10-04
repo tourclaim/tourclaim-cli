@@ -8,7 +8,7 @@ This is the Python edition of [tourclaim](https://github.com/tourclaim/tourclaim
 
 ## What it does
 
-1. **Sign in.** The traveler approves a short code in their own browser. The tool saves a key that belongs to that traveler.
+1. **Sign in.** The traveler opens the sign-in page in their own browser, types the code shown in the terminal, and approves. The tool saves a key that belongs to that traveler.
 2. **Start a draft** with whatever the traveler has said, then answer the questions the API says are still open.
 3. **Add evidence** the traveler chooses to share: receipts, itineraries, a doctor's note they already have, and booking or cancellation emails.
 4. **The traveler signs.** They review the draft and sign an authorization in their own browser. This package cannot sign for them.
@@ -69,7 +69,7 @@ Every command takes `--json` (one JSON value per line on stdout, errors as one J
 
 | Command | What it does |
 | --- | --- |
-| `tourclaim login` | Sign in with a device code (`--no-browser`, `--scope`, `--force`), or `--with-token` to save an existing key read from stdin or a hidden prompt. |
+| `tourclaim login` | Sign in: the traveler opens the sign-in page and types the code shown in the terminal (`--no-browser`, `--scope`, `--force`). Or `--with-token` to save an existing key read from stdin or a hidden prompt; such a key does not say whose account it is. |
 | `tourclaim logout` | Revoke the key on the server and remove the stored copy. |
 | `tourclaim status` (`whoami`) | The API mode, whether the connector is enabled, the signed-in account and key expiry. |
 | `tourclaim cards search <name>` | Find a card product id. |
@@ -99,14 +99,15 @@ from tourclaim import Client
 client = Client()
 
 if not client.has_api_key:
-    # The traveler approves the code in their own browser; save=True stores the key
-    # where `tourclaim login` keeps it.
+    # The traveler opens the page and types the code in their own browser; never put
+    # the code in a link. save=True stores the key where `tourclaim login` keeps it.
     client.device_login(
-        on_code=lambda code: print("Open", code["verification_uri"], "and enter", code["user_code"]),
+        on_code=lambda code: print(f"Open {code['verification_uri']}\nEnter this code on that page: {code['user_code']}"),
         save=True,
     )
 
-print(client.get_connection()["account_email"], client.connector_info()["mode"])
+# account_email is present only for keys from `tourclaim login` (device_login).
+print(client.get_connection().get("account_email"), client.connector_info()["mode"])
 
 drafts = client.list_drafts()  # offer to continue one before starting another
 draft = client.start_intake({"merchant_name": "Example Air", "reason_category": "AIRLINE_CANCELLATION"})
@@ -189,8 +190,9 @@ The credentials file maps each API base URL to `{"api_key","expires_at","grant_i
 
 ## Security
 
-- **Keys belong to one traveler.** A key lasts 30 days and cannot be refreshed; a traveler can have at most 5. Keys from `tourclaim login` reach the drafts started by any `tourclaim login` on the same account, so signing in again does not lose a draft. The traveler can revoke keys at `https://app.getcopernican.com/connect/muse`, and `tourclaim logout` revokes the one in use.
+- **Keys belong to one traveler.** A key lasts 30 days and cannot be refreshed; a traveler can have at most 5 connections, and a new `tourclaim login` past that retires the account's oldest `tourclaim login` key (never another app's). Keys from `tourclaim login` reach the drafts started by any `tourclaim login` on the same account, so signing in again does not lose a draft. The traveler can revoke keys at `https://app.getcopernican.com/connect/muse`, and `tourclaim logout` revokes the one in use.
 - **Stored with tight permissions.** The credentials file is written with mode 0600 inside a 0700 directory, and the tool warns if it is readable by others. On Windows it lives in your user profile and relies on its permissions.
+- **The code is typed, never linked.** The traveler types the code shown in the terminal on the sign-in page; there is no link with the code in it.
 - **Never on the command line, never printed.** Keys are not accepted as arguments, and anything shaped like a key is redacted from output. `repr(Client(...))` does not show the key.
 - **Only https.** Keys are only sent over https, except to localhost for testing. Redirects are not followed.
 - **A person signs.** Only the traveler can sign the claim authorization, in their own browser at the review link. Neither the command line nor the library can sign.

@@ -8,7 +8,7 @@ You act for one traveler. The traveler decides what is shared and signs the auth
 
 1. **Always pass `--json`.** Read stdout line by line; the last line is the result. On failure, check the exit code and read the one-line `{"error":{...}}` object on stderr. Progress and warnings on stderr are plain text.
 2. **Check the mode first.** Run `tourclaim status --json`. If `mode` is `review`, tell the traveler this is a test service: claims are synthetic, nothing is filed, and only fictional data should be used.
-3. **Sign-in goes through the traveler's browser.** If `status` exits 3, run `tourclaim login --json --no-browser`. The first line is a `device_code` event: give the traveler `verification_uri` and `user_code` (or `verification_uri_complete`) exactly as printed, and keep the command running until it exits. Its last line says who is signed in (`account_email`) and when the key expires.
+3. **Sign-in goes through the traveler's browser.** If `status` exits 3, run `tourclaim login --json --no-browser`. The first line is a `device_code` event: give the traveler `verification_uri` and `user_code` exactly as printed, and tell them to open the page and type the code themselves. There is no link with the code in it; never build one. Keep the command running until it exits. Its last line says when the key expires and, for keys from `tourclaim login`, whose account it is (`account_email`). If it exits 3 with `access_denied`, relay `error.message`: it may say the account already has 5 connections from other apps.
 4. **Never ask for the key in chat.** Do not ask the traveler to paste an API key into the conversation, and never put a key in a command line, a URL, a file you write or a log. If they already have a key, they can run `tourclaim login --with-token` in their own terminal.
 5. **Say the important things early.** Before collecting details, tell the traveler that Copernican charges a 10% fee only if the claim is reimbursed, that they will review and sign an authorization before anything is submitted, and that only bookings charged in US dollars are supported.
 6. **Look for an existing draft first.** Run `tourclaim intake list --json` before `intake start`. If a draft for the same trip exists, offer to continue it instead of starting another; one booking can have only one claim.
@@ -28,7 +28,7 @@ You act for one traveler. The traveler decides what is shared and signs the auth
 
 ```sh
 tourclaim status --json                       # exit 3: not signed in
-tourclaim login --json --no-browser           # relay the code and URL from the first line
+tourclaim login --json --no-browser           # relay the page URL and the code to type from the first line
 tourclaim intake list --json                  # continue an existing draft for this trip, if any
 tourclaim cards search "sapphire preferred" --json
 tourclaim intake start --json --set merchant_name="Example Air" --set reason_category=airline_cancellation

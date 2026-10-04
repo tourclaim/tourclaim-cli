@@ -492,18 +492,23 @@ def _report_login(
     credential: StoredCredential,
     replaced_key_id: Optional[str],
     already: bool,
+    replaced_already_gone: bool = False,
 ) -> None:
     expires_at = (info or {}).get("expires_at") or credential.expires_at
     scopes = (info or {}).get("scopes") if info else credential.scopes
     scopes = scopes if isinstance(scopes, list) else []
-    email = (info or {}).get("account_email")
+    # Only keys from tourclaim login (device flow) say whose account they are.
+    email = (info or {}).get("account_email") or None
     if ctx.json:
-        ctx.out.data(
+        result: Dict[str, Any] = {
+            "event": "signed_in",
+            "already_signed_in": already,
+            "api_url": ctx.api_url,
+        }
+        if email:
+            result["account_email"] = email
+        result.update(
             {
-                "event": "signed_in",
-                "already_signed_in": already,
-                "api_url": ctx.api_url,
-                "account_email": email,
                 "key": {"id": (info or {}).get("id") or credential.grant_id, "expires_at": expires_at, "scopes": scopes},
                 "grant_id": credential.grant_id,
                 "mode": mode,
@@ -511,16 +516,21 @@ def _report_login(
                 "replaced_key_id": replaced_key_id,
             }
         )
+        ctx.out.data(result)
         return
     expiry = f"key expires {format_time(expires_at)}, {relative_time(expires_at, ctx.deps.now())}"
-    who = f"Signed in as {email}" if email else f"Signed in to {ctx.api_url}"
-    ctx.out.line(f"Already signed in as {email or 'this traveler'} ({expiry})." if already else f"{who} ({expiry}).")
+    who = f" as {email}" if email else ""
+    ctx.out.line(f"Already signed in{who} ({expiry})." if already else f"Signed in{who} ({expiry}).")
     if scopes:
         ctx.out.line(f"Permissions: {', '.join(scopes)}")
     if not already:
         ctx.out.line(f"Key saved to {ctx.store.path} (readable only by you).")
     if replaced_key_id:
-        ctx.out.line(f"Revoked the previous key {replaced_key_id}.")
+        ctx.out.line(
+            f"The previous key {replaced_key_id} had already stopped working."
+            if replaced_already_gone
+            else f"Revoked the previous key {replaced_key_id}."
+        )
     notice = mode_notice(mode)
     if notice:
         ctx.out.line(notice[0].upper() + notice[1:] + ".")
@@ -531,14 +541,14 @@ def _report_login(
 def _device_flow(ctx: Context, scopes: List[str], no_browser: bool) -> Dict[str, Any]:
     api = ctx.client()
     code = api.request_device_code(scopes or None, client_name=ctx.user_agent)
-    complete = code.get("verification_uri_complete")
+    # The code is typed by the traveler, never carried in a link: a link with
+    # the code in it is what a phishing message would send.
     if ctx.json:
         ctx.out.data(
             {
                 "event": "device_code",
                 "user_code": code["user_code"],
                 "verification_uri": code["verification_uri"],
-                "verification_uri_complete": complete,
                 "expires_in": code["expires_in"],
                 "interval": code.get("interval", 5),
             }
@@ -547,17 +557,18 @@ def _device_flow(ctx: Context, scopes: List[str], no_browser: bool) -> Dict[str,
         ctx.out.lines(
             [
                 "",
-                "To connect this computer to your TourClaim account:",
+                "To connect this computer to your TourClaim account, open this page:",
                 "",
-                f"  1. Open   {code['verification_uri']}",
-                f"  2. Enter  {code['user_code']}",
+                f"  {code['verification_uri']}",
                 "",
-                "Only approve this if you started this sign-in yourself, and check that the code matches.",
+                f"Enter this code on that page: {code['user_code']}",
+                "",
+                "Type the code yourself. Only approve if you started this sign-in in this terminal.",
             ]
         )
     opened = False
     if ctx.deps.stdout_is_tty and not no_browser:
-        opened = ctx.deps.open_url(complete or code["verification_uri"])
+        opened = ctx.deps.open_url(code["verification_uri"])
     if not ctx.json:
         ctx.out.line("Opened the page in your browser." if opened else "")
     minutes = max(1, int(code["expires_in"] / 60 + 0.5))
@@ -630,10 +641,15 @@ def run_login(ctx: Context, args: Args) -> int:
     ctx.forget_active_key()
 
     replaced_key_id = None
+    replaced_already_gone = False
     if existing and existing_check and existing.api_key != credential.api_key:
         try:
             ctx.client(existing.api_key).disconnect()
             replaced_key_id = existing_check[0].get("id")
+        except AuthenticationError:
+            # At the key limit the server retires the oldest tourclaim login key itself.
+            replaced_key_id = existing_check[0].get("id")
+            replaced_already_gone = True
         except TourClaimError as error:
             ctx.out.warn(f"Could not revoke the previous key ({error.message}). Revoke it at {_manage_keys_url(ctx)}")
 
@@ -642,7 +658,9 @@ def run_login(ctx: Context, args: Args) -> int:
             confirmed = _key_info(ctx, credential.api_key)
         except TourClaimError as error:
             ctx.out.warn(f"Saved the key, but could not confirm it: {error.message}")
-    _report_login(ctx, confirmed[0] if confirmed else None, confirmed[1] if confirmed else None, credential, replaced_key_id, False)
+    _report_login(
+        ctx, confirmed[0] if confirmed else None, confirmed[1] if confirmed else None, credential, replaced_key_id, False, replaced_already_gone
+    )
     return ExitCode.OK
 
 
@@ -724,7 +742,7 @@ def run_status(ctx: Context, args: Args) -> int:
                     "cli_login_url": absolute_url(ctx.api_url, info.get("cli_login_url") or "/connect/cli"),
                 },
                 "signed_in": signed_in,
-                "account_email": key.get("account_email") if key else None,
+                **({"account_email": key["account_email"]} if key and key.get("account_email") else {}),
                 "key": {"id": key.get("id"), "expires_at": key.get("expires_at"), "scopes": key.get("scopes")} if key else None,
                 "key_source": active.source if active else None,
                 "key_problem": key_problem,
@@ -1255,10 +1273,10 @@ def run_intake_submit(ctx: Context, args: Args) -> int:
     revision = args.int_arg("revision", 1)
     if revision is None:
         intake = get_intake(api, intake_id)
+        # Answers missing: say which. Anything else (unsigned, or a signature
+        # that is out of date) the API names more precisely than the state does.
         if intake.get("state") == "collecting":
             raise _incomplete(intake_id, intake)
-        if intake.get("state") == "needs_approval":
-            raise _not_signed(intake_id, intake)
         revision = intake["revision"]
     final_revision = revision
     try:
@@ -1289,9 +1307,10 @@ COMMANDS: List[Command] = [
         usage="tourclaim login [--no-browser] [--scope <scope>]... [--force]\n       tourclaim login --with-token [--force] < key.txt",
         description="\n".join(
             [
-                "Signs in with a short code the traveler approves in their own browser, then saves a key for this API URL.",
+                "Opens the sign-in page; the traveler types the code shown here and approves in their own browser. Then saves a key",
+                "for this API URL. At the limit of 5 connections, the server retires the account's oldest tourclaim login key.",
                 "The key belongs to one traveler, lasts 30 days and cannot be refreshed; sign in again when it expires.",
-                "With --json, the first line carries the code and URL to show the traveler; the last line is the result.",
+                "With --json, the first line carries the page URL and the code to show the traveler; the last line is the result.",
                 "",
                 "--with-token saves a key the traveler already created at /connect/muse. It reads the key from stdin",
                 "(piped) or a hidden prompt. Keys are never accepted as command-line arguments.",

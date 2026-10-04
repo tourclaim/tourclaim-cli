@@ -60,19 +60,22 @@ interface SignedIn {
   mode: string | null;
   credential: StoredCredential;
   replacedKeyId: string | null;
+  /** The previous key no longer worked when it was replaced (expired, or retired by the server at the key limit). */
+  replacedAlreadyGone?: boolean;
   already: boolean;
 }
 
 function report(ctx: Context, result: SignedIn): void {
   const expiresAt = result.info?.expires_at ?? result.credential.expires_at;
   const scopes = result.info?.scopes ?? result.credential.scopes;
-  const email = result.info?.account_email ?? null;
+  // Only keys from tourclaim login (device flow) say whose account they are.
+  const email = typeof result.info?.account_email === "string" && result.info.account_email ? result.info.account_email : null;
   if (ctx.json) {
     ctx.out.data({
       event: "signed_in",
       already_signed_in: result.already,
       api_url: ctx.apiUrl,
-      account_email: email,
+      ...(email ? { account_email: email } : {}),
       key: { id: result.info?.id ?? result.credential.grant_id, expires_at: expiresAt, scopes },
       grant_id: result.credential.grant_id,
       mode: result.mode,
@@ -82,11 +85,17 @@ function report(ctx: Context, result: SignedIn): void {
     return;
   }
   const expiry = `key expires ${formatTime(expiresAt)}, ${relativeTime(expiresAt, ctx.deps.now())}`;
-  const who = email ? `Signed in as ${email}` : `Signed in to ${ctx.apiUrl}`;
-  ctx.out.line(result.already ? `Already signed in as ${email ?? "this traveler"} (${expiry}).` : `${who} (${expiry}).`);
+  const who = email ? ` as ${email}` : "";
+  ctx.out.line(result.already ? `Already signed in${who} (${expiry}).` : `Signed in${who} (${expiry}).`);
   if (scopes.length) ctx.out.line(`Permissions: ${scopes.join(", ")}`);
   if (!result.already) ctx.out.line(`Key saved to ${ctx.store.path} (readable only by you).`);
-  if (result.replacedKeyId) ctx.out.line(`Revoked the previous key ${result.replacedKeyId}.`);
+  if (result.replacedKeyId) {
+    ctx.out.line(
+      result.replacedAlreadyGone
+        ? `The previous key ${result.replacedKeyId} had already stopped working.`
+        : `Revoked the previous key ${result.replacedKeyId}.`,
+    );
+  }
   const notice = modeNotice(result.mode);
   if (notice) ctx.out.line(notice.charAt(0).toUpperCase() + notice.slice(1) + ".");
   if (result.already) ctx.out.line("To replace this key, run: tourclaim login --force");
@@ -133,7 +142,7 @@ async function pollForToken(ctx: Context, api: ApiClient, code: DeviceCodeRespon
         continue;
       case "access_denied":
         throw new CliError(
-          sentences("The sign-in was declined", err.error_description, "Nothing was saved."),
+          sentences(err.error_description || "The sign-in was declined", "Nothing was saved."),
           ExitCode.AUTH,
           "access_denied",
         );
@@ -163,29 +172,31 @@ async function deviceFlow(ctx: Context, scopes: string[], noBrowser: boolean): P
   ) {
     throw new CliError("The API returned an unexpected sign-in response.", ExitCode.ERROR, "bad_response");
   }
-  const complete = isHttpUrl(code.verification_uri_complete) ? code.verification_uri_complete : null;
+  // The code is typed by the traveler, never carried in a link: a link with the
+  // code in it is what a phishing message would send. Older servers also sent
+  // verification_uri_complete; it is ignored.
   if (ctx.json) {
     ctx.out.data({
       event: "device_code",
       user_code: code.user_code,
       verification_uri: code.verification_uri,
-      verification_uri_complete: complete,
       expires_in: code.expires_in,
       interval: code.interval ?? 5,
     });
   } else {
     ctx.out.lines([
       "",
-      "To connect this computer to your TourClaim account:",
+      "To connect this computer to your TourClaim account, open this page:",
       "",
-      `  1. Open   ${code.verification_uri}`,
-      `  2. Enter  ${code.user_code}`,
+      `  ${code.verification_uri}`,
       "",
-      "Only approve this if you started this sign-in yourself, and check that the code matches.",
+      `Enter this code on that page: ${code.user_code}`,
+      "",
+      "Type the code yourself. Only approve if you started this sign-in in this terminal.",
     ]);
   }
   let opened = false;
-  if (ctx.deps.stdoutIsTTY && !noBrowser) opened = await ctx.deps.openUrl(complete ?? code.verification_uri);
+  if (ctx.deps.stdoutIsTTY && !noBrowser) opened = await ctx.deps.openUrl(code.verification_uri);
   if (!ctx.json) ctx.out.line(opened ? "Opened the page in your browser." : "");
   const minutes = Math.max(1, Math.round(code.expires_in / 60));
   ctx.out.info(`Waiting for approval (the code expires in ${minutes} minute${minutes === 1 ? "" : "s"}). Press Ctrl-C to cancel.`);
@@ -210,9 +221,10 @@ export const login: Command = {
   summary: "Connect this computer to a traveler's TourClaim account",
   usage: "tourclaim login [--no-browser] [--scope <scope>]... [--force]\n       tourclaim login --with-token [--force] < key.txt",
   description: [
-    "Signs in with a short code the traveler approves in their own browser, then saves a key for this API URL.",
+    "Opens the sign-in page; the traveler types the code shown here and approves in their own browser. Then saves a key",
+    "for this API URL. At the limit of 5 connections, the server retires the account's oldest tourclaim login key.",
     "The key belongs to one traveler, lasts 30 days and cannot be refreshed; sign in again when it expires.",
-    "With --json, the first line carries the code and URL to show the traveler; the last line is the result.",
+    "With --json, the first line carries the page URL and the code to show the traveler; the last line is the result.",
     "",
     "--with-token saves a key the traveler already created at /connect/muse. It reads the key from stdin",
     "(piped) or a hidden prompt. Keys are never accepted as command-line arguments.",
@@ -228,7 +240,7 @@ export const login: Command = {
     },
     force: {
       type: "boolean",
-      description: "Replace a valid stored key with a new one and revoke the old key (a traveler can hold at most 5). Drafts stay reachable.",
+      description: "Replace a valid stored key with a new one and revoke the old key. Drafts stay reachable.",
     },
   },
   examples: ["tourclaim login", "tourclaim login --json --no-browser", "tourclaim login --with-token < key.txt"],
@@ -286,12 +298,19 @@ export const login: Command = {
     ctx.forgetActiveKey();
 
     let replacedKeyId: string | null = null;
+    let replacedAlreadyGone = false;
     if (existing && existingCheck && existing.api_key !== credential.api_key) {
       try {
         await ctx.client(existing.api_key).request(KEY_PATH, { method: "DELETE" });
         replacedKeyId = existingCheck.info.id;
       } catch (error) {
-        ctx.out.warn(`Could not revoke the previous key (${(error as Error).message}). Revoke it at ${manageKeysUrl(ctx)}`);
+        if (error instanceof ApiError && error.status === 401) {
+          // At the key limit the server retires the oldest tourclaim login key itself.
+          replacedKeyId = existingCheck.info.id;
+          replacedAlreadyGone = true;
+        } else {
+          ctx.out.warn(`Could not revoke the previous key (${(error as Error).message}). Revoke it at ${manageKeysUrl(ctx)}`);
+        }
       }
     }
 
@@ -302,7 +321,7 @@ export const login: Command = {
         ctx.out.warn(`Saved the key, but could not confirm it: ${(error as Error).message}`);
       }
     }
-    report(ctx, { info: confirmed?.info ?? null, mode: confirmed?.mode ?? null, credential, replacedKeyId, already: false });
+    report(ctx, { info: confirmed?.info ?? null, mode: confirmed?.mode ?? null, credential, replacedKeyId, replacedAlreadyGone, already: false });
     return ExitCode.OK;
   },
 };
@@ -400,7 +419,7 @@ export const status: Command = {
           cli_login_url: absoluteUrl(ctx.apiUrl, info.cli_login_url || "/connect/cli"),
         },
         signed_in: signedIn,
-        account_email: key?.account_email ?? null,
+        ...(key?.account_email ? { account_email: key.account_email } : {}),
         key: key ? { id: key.id, expires_at: key.expires_at, scopes: key.scopes } : null,
         key_source: active?.source ?? null,
         key_problem: keyProblem,

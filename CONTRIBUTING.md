@@ -10,7 +10,7 @@ npm test          # builds dist/, compiles the tests and runs them with node:tes
 npm run mock      # a mock API on http://127.0.0.1:4010 for trying the tool by hand
 ```
 
-With the mock running, set `TOURCLAIM_API_URL=http://127.0.0.1:4010` and use `node dist/cli.js`. The links the tool prints stand in for the traveler's browser: opening the sign-in link approves the sign-in (the mock also approves it after two polls), and opening a draft's review link signs it.
+With the mock running, set `TOURCLAIM_API_URL=http://127.0.0.1:4010` and use `node dist/cli.js`. The mock's pages stand in for the traveler's browser: typing the code into its `/connect/cli` page approves a sign-in (the mock also approves it after two polls), and opening a draft's review link signs it.
 
 ## Rules for changes
 

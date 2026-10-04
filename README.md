@@ -8,7 +8,7 @@ Command-line client for [TourClaim](https://app.getcopernican.com/muse) by Coper
 
 TourClaim files trip cancellation and interruption claims against the travel benefits of a traveler's credit card. This tool drives TourClaim's connector API on behalf of one traveler:
 
-1. **Sign in.** The traveler approves a short code in their own browser. The tool saves a key that belongs to that traveler.
+1. **Sign in.** The traveler opens the sign-in page in their own browser, types the code shown in the terminal, and approves. The tool saves a key that belongs to that traveler.
 2. **Start a draft** with whatever the traveler has said, then answer the questions the API says are still open.
 3. **Add evidence** the traveler chooses to share: receipts, itineraries, a doctor's note they already have, and booking or cancellation emails.
 4. **The traveler signs.** They review the draft and sign an authorization in their own browser. This tool cannot sign for them.
@@ -83,12 +83,13 @@ tourclaim login [--no-browser] [--scope <scope>]... [--force]
 tourclaim login --with-token [--force] < key.txt
 ```
 
-Signs in with a device code: the tool prints a URL and a code such as `WDJB-MJHT`, opens the URL in the browser when run in a terminal (not with `--no-browser`), and waits while the traveler approves in their own browser. It polls at the interval the API asks for, slows down when told to, and gives up when the code expires. It then saves the key and prints the account and expiry: `Signed in as pat@example.com (key expires 2026-11-03 18:00 UTC, in 30 days).`
+Signs in with a device code. The tool prints the sign-in page (`https://app.getcopernican.com/connect/cli`) and, on a line of its own, `Enter this code on that page: WDJB-MJHT`. It opens the page in the browser when run in a terminal (not with `--no-browser`). The traveler types the code shown in the terminal and approves; the code is never put in a link, so a link someone else sends cannot sign anyone in. The tool polls at the interval the API asks for, slows down when told to, and gives up when the code expires. It then saves the key and prints the account and expiry: `Signed in as pat@example.com (key expires 2026-11-03 18:00 UTC, in 30 days).`
 
 - `--scope` asks for fewer permissions: any of `intakes:write`, `evidence:write`, `claims:submit`, `claims:read` (repeat the flag or separate with commas). The default is all four.
-- If a valid key is already stored for the API URL, `login` reports it and exits 0 without starting a new sign-in. `--force` gets a new key and revokes the old one, since a traveler can hold at most 5 keys. Drafts are not lost: see [Which drafts a key can reach](#which-drafts-a-key-can-reach).
-- `--with-token` saves a key the traveler already created at `https://app.getcopernican.com/connect/muse`. It reads the key from stdin when piped, or from a hidden prompt on a terminal, and checks it with the API before saving. A key is never accepted as a command-line argument.
-- With `--json`, the first line is `{"event":"device_code","user_code":...,"verification_uri":...,"verification_uri_complete":...,"expires_in":...,"interval":...}` so an agent can show it to its human; the last line is `{"event":"signed_in",...}`.
+- If a valid key is already stored for the API URL, `login` reports it and exits 0 without starting a new sign-in. `--force` gets a new key and revokes the old one. Drafts are not lost: see [Which drafts a key can reach](#which-drafts-a-key-can-reach).
+- A traveler can hold at most 5 connections. When a new `tourclaim login` would go over, the server retires the account's oldest `tourclaim login` key; it never touches keys made for other apps. If all 5 belong to other apps, the sign-in fails (exit 3) with the server's reason: disconnect one at `https://app.getcopernican.com/connect/muse` first.
+- `--with-token` saves a key the traveler already created at `https://app.getcopernican.com/connect/muse`. It reads the key from stdin when piped, or from a hidden prompt on a terminal, and checks it with the API before saving. Such a key does not say whose account it is, so the tool prints `Signed in (key expires ...)` without an email. A key is never accepted as a command-line argument.
+- With `--json`, the first line is `{"event":"device_code","user_code":...,"verification_uri":...,"expires_in":...,"interval":...}` so an agent can show the page and the code to its human; the last line is `{"event":"signed_in",...}`, with `account_email` when the key says whose account it is.
 
 ### `tourclaim logout`
 
@@ -214,7 +215,7 @@ With `--json`:
 
 - **stdout** carries one JSON value per line. For `cards search`, `intake start|show|set|attach|add-email|submit` and `claims list|show`, it is the API's own response object, unchanged. For `intake sign` without `--wait`, it is the draft.
 - **Commands that wait** print an event line first and the result last: `login` prints `{"event":"device_code",...}` then `{"event":"signed_in",...}`; `intake sign --wait` prints `{"event":"waiting_for_signature","intake_id","review_url","timeout_seconds"}` then the draft. The last line is always the result.
-- **`status`** prints `{"api_url","mode","enabled","connector":{...},"signed_in","account_email","key":{"id","expires_at","scopes"},"key_source","key_problem","credentials_path"}`. **`logout`** prints `{"api_url","revoked","already_invalid","credential_removed","key_source"}`. **`intake delete`** prints `{"id","deleted":true}`.
+- **`status`** prints `{"api_url","mode","enabled","connector":{...},"signed_in","account_email","key":{"id","expires_at","scopes"},"key_source","key_problem","credentials_path"}`; `account_email` is present only for keys from `tourclaim login`. **`logout`** prints `{"api_url","revoked","already_invalid","credential_removed","key_source"}`. **`intake delete`** prints `{"id","deleted":true}`.
 - **Errors** go to stderr as one line, `{"error":{"code","message","exit_code",...}}`, with `status`, `detail` (the API's validation list), `retry_after`, `idempotency_key`, `review_url`, `current_revision`, `state` or `missing_fields` when they apply. Codes include `usage_error`, `not_signed_in`, `unauthorized`, `forbidden`, `not_found`, `invalid`, `too_large`, `rate_limited`, `unavailable`, `access_denied`, `expired_token`, `timeout`, `network_error`, `unsupported_file`, `cancelled`, and for exit code 4 one of the [conflict causes](#conflict-causes).
 - **Progress and warnings** go to stderr as plain text in both modes.
 
@@ -267,10 +268,11 @@ The credentials file maps each API base URL to `{"api_key","expires_at","grant_i
 
 ## Security
 
-- **Keys belong to one traveler.** A key lasts 30 days and cannot be refreshed; a traveler can have at most 5 active keys. Sign in again when it expires. The traveler can revoke keys at any time at `https://app.getcopernican.com/connect/muse`, and `tourclaim logout` revokes the one in use.
+- **Keys belong to one traveler.** A key lasts 30 days and cannot be refreshed; a traveler can have at most 5 connections, and a new `tourclaim login` past that retires the oldest `tourclaim login` key. Sign in again when it expires. The traveler can revoke keys at any time at `https://app.getcopernican.com/connect/muse`, and `tourclaim logout` revokes the one in use.
 - **Drafts stay with the account's CLI sign-ins.** Drafts started from `tourclaim login` stay reachable after signing in again; drafts started by other apps (such as Muse) are not visible to the tool. See [Which drafts a key can reach](#which-drafts-a-key-can-reach).
 - **Stored with tight permissions.** The credentials file is written with mode 0600 inside a 0700 directory, and the tool warns if it finds the file readable by others. On Windows it lives in your user profile and relies on its permissions.
 - **Never on the command line.** Keys are never accepted as arguments, where shell history and process lists would keep them. Use `tourclaim login`, pipe a key to `tourclaim login --with-token`, or set `TOURCLAIM_API_KEY` from a secret store.
+- **The code is typed, never linked.** The sign-in page does not take the code from a link; the traveler types the code shown in their own terminal. Do not approve a code you did not start yourself.
 - **Never printed.** No command prints the key, in human or JSON output; anything shaped like a key is redacted from output.
 - **Only https.** Keys are only sent over https, except to localhost for testing. Redirects are not followed.
 - **A person signs.** Only the traveler can sign the claim authorization, in their own browser at the review link. The tool cannot sign and does not automate that page.

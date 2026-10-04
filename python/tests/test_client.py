@@ -1,6 +1,7 @@
 """The library: one method per operation, typed exceptions, device login."""
 
 import itertools
+import re
 import socket
 import threading
 
@@ -140,9 +141,9 @@ def test_discovery_and_schema_need_no_key(mock):
 
 
 def test_key_precedence_argument_then_env_then_stored(mock, isolated_env, monkeypatch):
-    stored = mock.issue_key(traveler="stored@example.com")
-    from_env = mock.issue_key(traveler="env@example.com")
-    explicit = mock.issue_key(traveler="arg@example.com")
+    stored = mock.issue_key(traveler="stored@example.com", channel="cli")
+    from_env = mock.issue_key(traveler="env@example.com", channel="cli")
+    explicit = mock.issue_key(traveler="arg@example.com", channel="cli")
     tourclaim.CredentialStore.default().set(mock.url, tourclaim.StoredCredential(stored))
     assert Client(api_url=mock.url).get_connection()["account_email"] == "stored@example.com"
     monkeypatch.setenv("TOURCLAIM_API_KEY", from_env)
@@ -257,7 +258,27 @@ def test_device_login_prints_the_code_to_stderr_by_default(mock, capsys):
     mock.device_script = ["approve"]
     Client(api_url=mock.url, load_credentials=False).device_login(sleep=lambda s: None)
     err = capsys.readouterr().err
-    assert "/connect/cli" in err and "enter" in err and "tc_muse_" not in err
+    assert f"open {mock.url}/connect/cli\n" in err
+    assert re.search(r"^Enter this code on that page: [A-Z]{4}-[A-Z]{4}$", err, re.M)
+    assert "?code=" not in err and "tc_muse_" not in err
+
+
+def test_account_email_only_for_login_keys(mock):
+    assert Client(mock.issue_key(channel="key"), mock.url).get_connection().get("account_email") is None
+    assert Client(mock.issue_key(channel="cli"), mock.url).get_connection()["account_email"] == mock.traveler
+
+
+def test_device_code_has_no_complete_uri_even_from_older_servers():
+    from mock_server import MockServer
+
+    old = MockServer(send_complete_uri=True)
+    old.start()
+    try:
+        code = Client(api_url=old.url, load_credentials=False).request_device_code()
+        assert "verification_uri_complete" not in code
+        assert code["verification_uri"] == f"{old.url}/connect/cli"
+    finally:
+        old.stop()
 
 
 def test_device_flow_errors(mock):

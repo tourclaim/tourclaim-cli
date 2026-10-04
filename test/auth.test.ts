@@ -31,8 +31,9 @@ describe("login (device flow)", () => {
     assert.equal(r.code, 0, r.stderr);
     // 5 s, 5 s, then slow_down adds 5 s for every later poll.
     assert.deepEqual(r.sleeps, [5000, 5000, 10000, 10000]);
-    assert.match(r.stdout, /Open\s+http:\/\/127\.0\.0\.1:\d+\/connect\/cli/);
-    assert.match(r.stdout, /Enter\s+[A-Z]{4}-[A-Z]{4}/);
+    assert.match(r.stdout, /open this page:\n\n  http:\/\/127\.0\.0\.1:\d+\/connect\/cli\n/);
+    assert.match(r.stdout, /^Enter this code on that page: [A-Z]{4}-[A-Z]{4}$/m);
+    assert.doesNotMatch(r.stdout, /\?code=/, "the code is never put in a link");
     assert.match(r.stdout, /Signed in as pat@example\.com \(key expires \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC, in (29|30) days\)/);
     assert.match(r.stdout, /Review mode: claims are synthetic and nothing is filed/);
     assert.deepEqual(r.opened, [], "--no-browser must not open anything");
@@ -72,7 +73,7 @@ describe("login (device flow)", () => {
     assert.equal(first.event, "device_code");
     assert.match(first.user_code, /^[A-Z]{4}-[A-Z]{4}$/);
     assert.equal(first.verification_uri, `${mock.url}/connect/cli`);
-    assert.equal(first.verification_uri_complete, `${mock.url}/connect/cli?code=${first.user_code}`);
+    assert.deepEqual(Object.keys(first).sort(), ["event", "expires_in", "interval", "user_code", "verification_uri"]);
     assert.equal(first.expires_in, 600);
     assert.ok(!("device_code" in first));
     const device = mock.device(first.user_code);
@@ -90,7 +91,7 @@ describe("login (device flow)", () => {
     let r = await runCli(["login"], { home, apiUrl: mock.url, stdoutIsTTY: true });
     assert.equal(r.code, 0, r.stderr);
     assert.equal(r.opened.length, 1);
-    assert.match(r.opened[0] ?? "", /\/connect\/cli\?code=[A-Z]{4}-[A-Z]{4}$/);
+    assert.equal(r.opened[0], `${mock.url}/connect/cli`);
 
     const other = await tempHome();
     mock.deviceScript = ["approve"];
@@ -148,8 +149,61 @@ describe("login (device flow)", () => {
     }
   });
 
+  it("ignores verification_uri_complete from older servers", async () => {
+    const old = new MockServer({ deviceInterval: 5, sendCompleteUri: true });
+    await old.start();
+    try {
+      old.deviceScript = ["approve"];
+      const r = await runCli(["login", "--json"], { home, apiUrl: old.url, stdoutIsTTY: true });
+      assert.equal(r.code, 0, r.stderr);
+      assert.ok(!("verification_uri_complete" in r.jsonLines()[0]));
+      assert.deepEqual(r.opened, [`${old.url}/connect/cli`]);
+      assert.doesNotMatch(r.stdout, /\?code=/);
+    } finally {
+      await old.stop();
+    }
+  });
+
+  it("at the 5-key limit the server retires the oldest login key; --force does not warn about it", async () => {
+    const traveler = "busy@example.com";
+    const oldest = mock.issueKey({ traveler, channel: "cli" });
+    for (let i = 0; i < 3; i++) mock.issueKey({ traveler, channel: "cli" });
+    const muse = mock.issueKey({ traveler, channel: "key" });
+    await new CredentialStore(credPath(home), process.platform, () => {}).set(mock.url, { api_key: oldest, expires_at: null, grant_id: null, scopes: [] });
+    mock.deviceScript = ["approve"];
+    mock.deviceTraveler = traveler;
+    try {
+      const r = await runCli(["login", "--force", "--no-browser"], { home, apiUrl: mock.url });
+      assert.equal(r.code, 0, r.stderr);
+      assert.doesNotMatch(r.stderr, /warning/);
+      assert.match(r.stdout, /The previous key [0-9a-f-]{36} had already stopped working\./);
+      assert.equal(mock.keyRecord(oldest)?.revoked, true);
+      assert.equal(mock.keyRecord(muse)?.revoked, false, "keys made for other apps are never retired");
+    } finally {
+      mock.deviceTraveler = null;
+    }
+  });
+
+  it("shows the server's reason when every connection belongs to another app", async () => {
+    const traveler = "full@example.com";
+    for (let i = 0; i < 5; i++) mock.issueKey({ traveler, channel: "key" });
+    mock.deviceScript = ["approve"];
+    mock.deviceTraveler = traveler;
+    try {
+      const r = await runCli(["login", "--json", "--no-browser"], { home, apiUrl: mock.url });
+      assert.equal(r.code, 3);
+      assert.equal(r.jsonError().code, "access_denied");
+      assert.equal(
+        r.jsonError().message,
+        "This account already has five connections. Disconnect one at /connect/muse, then run `tourclaim login` again. Nothing was saved.",
+      );
+    } finally {
+      mock.deviceTraveler = null;
+    }
+  });
+
   it("reports an existing valid key instead of starting a new sign-in", async () => {
-    const key = mock.issueKey();
+    const key = mock.issueKey({ channel: "cli" });
     await new CredentialStore(credPath(home), process.platform, () => {}).set(mock.url, {
       api_key: key,
       expires_at: null,
@@ -226,7 +280,8 @@ describe("login --with-token", () => {
     const key = mock.issueKey({ scopes: ["claims:read"] });
     const r = await runCli(["login", "--with-token"], { home, apiUrl: mock.url, stdin: `${key}\n` });
     assert.equal(r.code, 0, r.stderr);
-    assert.match(r.stdout, /Signed in as pat@example\.com \(key expires/);
+    // A key made at /connect/muse does not say whose account it is.
+    assert.match(r.stdout, /^Signed in \(key expires \d{4}-\d{2}-\d{2}/m);
     assert.ok(!r.stdout.includes(key));
     const saved = JSON.parse(await readFile(credPath(home), "utf8"));
     assert.equal(saved[mock.url].api_key, key);
@@ -239,7 +294,7 @@ describe("login --with-token", () => {
     const r = await runCli(["login", "--with-token", "--json"], { home, apiUrl: mock.url, stdinIsTTY: true, answers: [key] });
     assert.equal(r.code, 0, r.stderr);
     assert.equal(r.prompts.length, 1);
-    assert.equal(r.json().account_email, "pat@example.com");
+    assert.ok(!("account_email" in r.json()), "no account_email for a pasted key");
     assert.ok(!r.stdout.includes(key));
   });
 
@@ -275,7 +330,7 @@ describe("credentials", () => {
 
   it("TOURCLAIM_API_KEY takes precedence over the stored key", async () => {
     const stored = mock.issueKey({ traveler: "stored@example.com" });
-    const env = mock.issueKey({ traveler: "env@example.com" });
+    const env = mock.issueKey({ traveler: "env@example.com", channel: "cli" });
     await storeFor(home).set(mock.url, { api_key: stored, expires_at: null, grant_id: null, scopes: [] });
     const r = await runCli(["status", "--json"], { home, apiUrl: mock.url, env: { TOURCLAIM_API_KEY: env } });
     assert.equal(r.code, 0, r.stderr);
@@ -396,7 +451,7 @@ describe("logout and status", () => {
   });
 
   it("status shows review mode prominently, the account and key expiry", async () => {
-    await save(mock.issueKey());
+    await save(mock.issueKey({ channel: "cli" }));
     const r = await runCli(["status"], { home, apiUrl: mock.url });
     assert.equal(r.code, 0, r.stderr);
     assert.equal(r.stdout.split("\n")[0], "REVIEW MODE: CLAIMS ARE SYNTHETIC AND NOTHING IS FILED");
@@ -405,8 +460,17 @@ describe("logout and status", () => {
     assert.match(r.stdout, new RegExp(`Manage keys:\\s+${mock.url.replace(/\./g, "\\.")}/connect/muse`));
   });
 
+  it("status without an account email for a pasted key", async () => {
+    await save(mock.issueKey({ channel: "key" }));
+    const human = await runCli(["status"], { home, apiUrl: mock.url });
+    assert.match(human.stdout, /^Signed in:\s+yes$/m);
+    const json = await runCli(["status", "--json"], { home, apiUrl: mock.url });
+    assert.equal(json.json().signed_in, true);
+    assert.ok(!("account_email" in json.json()));
+  });
+
   it("whoami is an alias for status; --json carries account_email and mode", async () => {
-    await save(mock.issueKey());
+    await save(mock.issueKey({ channel: "cli" }));
     const r = await runCli(["whoami", "--json"], { home, apiUrl: mock.url });
     assert.equal(r.code, 0, r.stderr);
     const s = r.json();

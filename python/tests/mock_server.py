@@ -7,8 +7,9 @@ the drafts list (CLI keys of one traveler share drafts), evidence, signing
 (simulated), submission, claims, and the API's error shapes (422 lists and
 strings, 401 with WWW-Authenticate, 403, 404, 409, 413, 429 with Retry-After, 503).
 
-The traveler's browser is simulated by visiting /connect/cli?code=... (approves
-a sign-in) and /connect/muse?intake=... (signs the current revision).
+The traveler's browser is simulated by /connect/cli, a page with a form where
+the code is typed (submitting it to /connect/cli?code=... approves the sign-in),
+and /connect/muse?intake=... (signs the current revision).
 """
 
 from __future__ import annotations
@@ -95,6 +96,7 @@ class KeyRecord:
     scopes: List[str]
     expires_at: datetime
     revoked: bool = False
+    seq: int = 0  # creation order; at the key limit the oldest CLI key is retired
 
 
 @dataclass
@@ -191,6 +193,7 @@ class MockServer:
         auto_sign_after_reads: Optional[int] = None,
         no_conflict_header: bool = False,
         relative_discovery: bool = False,
+        send_complete_uri: bool = False,
         traveler: str = "pat@example.com",
     ) -> None:
         self.enabled = enabled
@@ -202,7 +205,11 @@ class MockServer:
         self.auto_sign_after_reads = auto_sign_after_reads
         self.no_conflict_header = no_conflict_header
         self.relative_discovery = relative_discovery
+        #: Behave like a server from before the security review: also send verification_uri_complete.
+        self.send_complete_uri = send_complete_uri
         self.traveler = traveler
+        #: The traveler who approves new sign-ins (default: traveler).
+        self.device_traveler: Optional[str] = None
         self.url = ""
         self.requests: List[RecordedRequest] = []
         self.keys: Dict[str, KeyRecord] = {}
@@ -228,6 +235,7 @@ class MockServer:
         self._lock = threading.Lock()
         self._claim_seq = 0
         self._change_seq = 0
+        self._key_seq = 0
         self.openapi = load_openapi() or {"openapi": "3.1.0", "info": {"title": "TourClaim by Copernican", "description": ""}, "paths": {}}
 
     # ---- lifecycle ----
@@ -263,7 +271,9 @@ class MockServer:
 
     def issue_key(self, traveler: Optional[str] = None, scopes: Optional[List[str]] = None, expires_in: float = 30 * 86400, channel: str = "key") -> str:
         token = new_key_token()
+        self._key_seq += 1
         self.keys[token] = KeyRecord(
+            seq=self._key_seq,
             token=token,
             id=str(uuid.uuid4()),
             channel=channel,
@@ -392,7 +402,13 @@ class MockServer:
         key = self._authenticate(r)
         v1 = path[len("/api/connectors/v1"):]
         if v1 == "/key" and method == "GET":
-            return {"id": key.id, "expires_at": zoned(key.expires_at), "scopes": key.scopes, "account_email": key.traveler}
+            # Only keys from tourclaim login say whose account they are; others get null, as from the server.
+            return {
+                "id": key.id,
+                "expires_at": zoned(key.expires_at),
+                "scopes": key.scopes,
+                "account_email": key.traveler if key.channel == "cli" else None,
+            }
         if v1 == "/key" and method == "DELETE":
             key.revoked = True
             return None
@@ -484,18 +500,20 @@ class MockServer:
             expires_in=self.device_expires_in,
             interval=self.device_interval,
             status="pending",
-            traveler=self.traveler,
+            traveler=self.device_traveler or self.traveler,
         )
         self.devices[record.device_code] = record
         page = f"{self.url}/connect/cli"
-        return {
+        response = {
             "device_code": record.device_code,
             "user_code": record.user_code,
             "verification_uri": page,
-            "verification_uri_complete": f"{page}?code={record.user_code}",
             "expires_in": record.expires_in,
             "interval": record.interval,
         }
+        if self.send_complete_uri:
+            response["verification_uri_complete"] = f"{page}?code={record.user_code}"
+        return response
 
     def _device_token(self, body: Any) -> Any:
         b = body if isinstance(body, dict) else {}
@@ -528,13 +546,34 @@ class MockServer:
             raise HttpError(400, {"error": "access_denied", "error_description": d.description or "Declined."})
         if d.status == "pending":
             raise HttpError(400, {"error": "authorization_pending"})
+        # At the limit of five connections, retire the traveler's oldest CLI key;
+        # keys made for other apps are never touched.
+        now_dt = datetime.now(timezone.utc)
+        active = [k for k in self.keys.values() if k.traveler == d.traveler and not k.revoked and k.expires_at > now_dt]
+        if len(active) >= 5:
+            cli_keys = sorted((k for k in active if k.channel == "cli"), key=lambda k: k.seq)
+            if not cli_keys:
+                d.status = "denied"
+                raise HttpError(
+                    400,
+                    {
+                        "error": "access_denied",
+                        "error_description": "This account already has five connections. Disconnect one at /connect/muse, then run `tourclaim login` again.",
+                    },
+                )
+            cli_keys[0].revoked = True
         d.status = "consumed"
         token = self.issue_key(traveler=d.traveler, scopes=d.scopes, channel="cli")
         key = self.keys[token]
         return {"api_key": token, "expires_at": zoned(key.expires_at), "scopes": key.scopes, "grant_id": key.id}
 
     def _browser_approve(self, code: Optional[str]) -> str:
-        d = self.device(code) if code else None
+        if code is None:
+            return (
+                '<!doctype html><title>TourClaim mock</title><form><label>Enter the code shown in your terminal '
+                '<input name="code" autocomplete="off"></label> <button>Continue</button></form>'
+            )
+        d = self.device(code.strip().upper())
         if not d or d.status != "pending":
             return "<!doctype html><title>TourClaim mock</title><p>No pending sign-in with that code.</p>"
         d.status = "approved"
@@ -889,16 +928,20 @@ class MockServer:
         b = self._check_revision_body(body, [])
         if rec.claim_id:
             return self._claim_response(self.claims[rec.claim_id])
-        # Same order as the server: a revision mismatch is reported as approval_required.
+        # The server's order: each cause has its own code, in the order a client should fix them.
         if rec.revision != b["expected_revision"]:
-            raise self._conflict("approval_required", "The traveler must approve this exact intake revision")
-        if rec.approval_outdated:
-            raise self._conflict("approval_outdated", "Authorization changed; ask the traveler to review again")
+            raise self._conflict("stale_revision", "Intake changed; retrieve the current revision and try again")
         if rec.approved_revision != rec.revision:
             raise self._conflict("approval_required", "The traveler must approve this exact intake revision")
         if self.missing(rec.fields):
             raise self._conflict("intake_incomplete", "Intake is incomplete")
-        booking_key = f"{rec.traveler}|{str(rec.fields.get('merchant_name')).lower()}|{str(rec.fields.get('booking_ref')).lower()}"
+        if rec.approval_outdated:  # set by tests: signature over 7 days old, or the authorization changed
+            raise self._conflict("approval_outdated", "Approval expired; ask the traveler to review again")
+        if float(rec.fields.get("booking_amount") or 0) - float(rec.fields.get("refunded_amount") or 0) <= 0:
+            raise fail(422, "There is no unreimbursed booking cost to claim")
+        booking_key = "|".join(
+            [rec.traveler, str(rec.fields.get("merchant_name")).lower(), str(rec.fields.get("booking_ref")).lower(), str(rec.fields.get("trip_date"))]
+        )
         if any(c.booking_key == booking_key for c in self.claims.values()):
             raise self._conflict("duplicate_booking", "A claim for this booking already exists")
         self._claim_seq += 1
@@ -934,8 +977,8 @@ class MockServer:
 def main() -> None:
     """Runs the mock on http://127.0.0.1:4010 (or MOCK_PORT) for trying the CLI by hand.
 
-    Opening the sign-in link approves a sign-in (it is also approved on its own
-    after two polls), and opening a draft's review link signs it.
+    Typing the code into /connect/cli approves a sign-in (it is also approved on
+    its own after two polls), and opening a draft's review link signs it.
     """
     import sys
 

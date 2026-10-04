@@ -8,7 +8,7 @@ First release. The TourClaim connector API runs in review mode: claims are synth
 
 ### Added
 
-- `tourclaim login` with device authorization: the traveler approves a code in their browser, and the tool prints whose account it signed in to. `--with-token` saves an existing key from stdin or a hidden prompt; keys are never accepted as arguments. `--force` replaces the stored key and revokes the old one.
+- `tourclaim login` with device authorization: the tool opens the sign-in page and shows a code the traveler types there (the code is never put in a link), then prints whose account it signed in to. At the limit of 5 connections the server retires the oldest `tourclaim login` key. `--with-token` saves an existing key from stdin or a hidden prompt; keys are never accepted as arguments. `--force` replaces the stored key and revokes the old one.
 - `tourclaim logout` revokes the key on the server and removes the stored copy.
 - `tourclaim status` (alias `whoami`) shows the API mode, the signed-in account and key expiry.
 - `tourclaim cards search` to find the card a booking was paid with.

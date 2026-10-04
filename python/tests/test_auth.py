@@ -43,8 +43,9 @@ def test_polls_until_approved_honoring_interval_and_slow_down_and_saves_0600(moc
     assert r.code == 0, r.stderr
     # 5 s, 5 s, then slow_down adds 5 s for every later poll.
     assert r.sleeps == [5, 5, 10, 10]
-    assert re.search(r"Open\s+http://127\.0\.0\.1:\d+/connect/cli", r.stdout)
-    assert re.search(r"Enter\s+[A-Z]{4}-[A-Z]{4}", r.stdout)
+    assert re.search(r"open this page:\n\n  http://127\.0\.0\.1:\d+/connect/cli\n", r.stdout)
+    assert re.search(r"^Enter this code on that page: [A-Z]{4}-[A-Z]{4}$", r.stdout, re.M)
+    assert "?code=" not in r.stdout, "the code is never put in a link"
     assert re.search(
         r"Signed in as pat@example\.com \(key expires \d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC, in (29|30) days\)", r.stdout
     )
@@ -85,7 +86,7 @@ def test_json_mode_prints_code_first_then_result_and_never_the_device_code(mock,
     assert first["event"] == "device_code"
     assert re.fullmatch(r"[A-Z]{4}-[A-Z]{4}", first["user_code"])
     assert first["verification_uri"] == f"{mock.url}/connect/cli"
-    assert first["verification_uri_complete"] == f"{mock.url}/connect/cli?code={first['user_code']}"
+    assert sorted(first) == ["event", "expires_in", "interval", "user_code", "verification_uri"]
     assert first["expires_in"] == 600
     assert "device_code" not in first
     device = mock.device(first["user_code"])
@@ -102,7 +103,7 @@ def test_opens_the_browser_only_when_stdout_is_a_terminal(mock, home, tmp_path_f
     mock.device_script = ["approve"]
     r = run_cli(["login"], home=home, api_url=mock.url, stdout_is_tty=True)
     assert r.code == 0, r.stderr
-    assert len(r.opened) == 1 and re.search(r"/connect/cli\?code=[A-Z]{4}-[A-Z]{4}$", r.opened[0])
+    assert r.opened == [f"{mock.url}/connect/cli"]
     mock.device_script = ["approve"]
     other = str(tmp_path_factory.mktemp("other"))
     r = run_cli(["login"], home=other, api_url=mock.url, stdout_is_tty=False)
@@ -155,8 +156,59 @@ def test_treats_a_429_while_polling_like_slow_down(mock, home):
     assert r.sleeps == [5, 10, 10]
 
 
+def test_ignores_verification_uri_complete_from_older_servers(home):
+    old = MockServer(device_interval=5, send_complete_uri=True)
+    old.start()
+    try:
+        old.device_script = ["approve"]
+        r = run_cli(["login", "--json"], home=home, api_url=old.url, stdout_is_tty=True)
+        assert r.code == 0, r.stderr
+        assert "verification_uri_complete" not in r.json_lines()[0]
+        assert r.opened == [f"{old.url}/connect/cli"]
+        assert "?code=" not in r.stdout
+    finally:
+        old.stop()
+
+
+def test_at_the_key_limit_the_server_retires_the_oldest_login_key_and_force_does_not_warn(mock, home):
+    traveler = "busy@example.com"
+    oldest = mock.issue_key(traveler=traveler, channel="cli")
+    for _ in range(3):
+        mock.issue_key(traveler=traveler, channel="cli")
+    muse = mock.issue_key(traveler=traveler, channel="key")
+    save_key(home, mock.url, oldest)
+    mock.device_traveler = traveler
+    mock.device_script = ["approve"]
+    try:
+        r = run_cli(["login", "--force", "--no-browser"], home=home, api_url=mock.url)
+    finally:
+        mock.device_traveler = None
+    assert r.code == 0, r.stderr
+    assert "warning" not in r.stderr
+    assert re.search(r"The previous key [0-9a-f-]{36} had already stopped working\.", r.stdout)
+    assert mock.key_record(oldest).revoked is True
+    assert mock.key_record(muse).revoked is False, "keys made for other apps are never retired"
+
+
+def test_shows_the_servers_reason_when_every_connection_belongs_to_another_app(mock, home):
+    traveler = "full@example.com"
+    for _ in range(5):
+        mock.issue_key(traveler=traveler, channel="key")
+    mock.device_traveler = traveler
+    mock.device_script = ["approve"]
+    try:
+        r = run_cli(["login", "--json", "--no-browser"], home=home, api_url=mock.url)
+    finally:
+        mock.device_traveler = None
+    assert r.code == 3
+    assert r.json_error()["code"] == "access_denied"
+    assert r.json_error()["message"] == (
+        "This account already has five connections. Disconnect one at /connect/muse, then run `tourclaim login` again. Nothing was saved."
+    )
+
+
 def test_reports_an_existing_valid_key_instead_of_starting_a_new_sign_in(mock, home):
-    save_key(home, mock.url, mock.issue_key())
+    save_key(home, mock.url, mock.issue_key(channel="cli"))
     before = len(mock.requests_to("POST", "/api/connectors/device/code"))
     r = run_cli(["login", "--json"], home=home, api_url=mock.url)
     assert r.code == 0, r.stderr
@@ -214,7 +266,8 @@ def test_with_token_reads_a_piped_key_validates_and_saves_it(mock, home):
     key = mock.issue_key(scopes=["claims:read"])
     r = run_cli(["login", "--with-token"], home=home, api_url=mock.url, stdin=f"{key}\n".encode())
     assert r.code == 0, r.stderr
-    assert "Signed in as pat@example.com (key expires" in r.stdout
+    # A key made at /connect/muse does not say whose account it is.
+    assert re.search(r"^Signed in \(key expires \d{4}-\d{2}-\d{2}", r.stdout, re.M)
     assert key not in r.stdout
     saved = json.load(open(creds_file(home), encoding="utf-8"))[mock.url]
     assert saved["api_key"] == key
@@ -227,7 +280,7 @@ def test_with_token_reads_from_a_hidden_prompt_on_a_terminal(mock, home):
     r = run_cli(["login", "--with-token", "--json"], home=home, api_url=mock.url, stdin_is_tty=True, answers=[key])
     assert r.code == 0, r.stderr
     assert len(r.prompts) == 1
-    assert r.json()["account_email"] == "pat@example.com"
+    assert "account_email" not in r.json(), "no account_email for a pasted key"
     assert key not in r.stdout
 
 
@@ -251,7 +304,7 @@ def test_with_token_rejects_text_that_is_not_a_key(mock, home):
 
 def test_env_key_takes_precedence_over_the_stored_key(mock, home):
     stored = mock.issue_key(traveler="stored@example.com")
-    from_env = mock.issue_key(traveler="env@example.com")
+    from_env = mock.issue_key(traveler="env@example.com", channel="cli")
     save_key(home, mock.url, stored)
     r = run_cli(["status", "--json"], home=home, api_url=mock.url, env={"TOURCLAIM_API_KEY": from_env})
     assert r.code == 0, r.stderr
@@ -310,7 +363,7 @@ def test_credentials_file_format_matches_the_node_edition(home):
 
 
 def test_reads_a_credentials_file_written_by_the_node_edition(mock, home):
-    key = mock.issue_key(traveler="node@example.com")
+    key = mock.issue_key(traveler="node@example.com", channel="cli")
     path = creds_file(home)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     node_written = json.dumps(
@@ -423,7 +476,7 @@ def test_logout_when_not_signed_in(mock, home):
 
 
 def test_status_shows_review_mode_the_account_and_key_expiry(mock, home):
-    save_key(home, mock.url, mock.issue_key())
+    save_key(home, mock.url, mock.issue_key(channel="cli"))
     r = run_cli(["status"], home=home, api_url=mock.url)
     assert r.code == 0, r.stderr
     assert r.stdout.split("\n")[0] == "REVIEW MODE: CLAIMS ARE SYNTHETIC AND NOTHING IS FILED"
@@ -432,8 +485,16 @@ def test_status_shows_review_mode_the_account_and_key_expiry(mock, home):
     assert re.search(rf"Manage keys:\s+{re.escape(mock.url)}/connect/muse", r.stdout)
 
 
+def test_status_without_an_account_email_for_a_pasted_key(mock, home):
+    save_key(home, mock.url, mock.issue_key(channel="key"))
+    human = run_cli(["status"], home=home, api_url=mock.url)
+    assert re.search(r"^Signed in:\s+yes$", human.stdout, re.M)
+    js = run_cli(["status", "--json"], home=home, api_url=mock.url).json()
+    assert js["signed_in"] is True and "account_email" not in js
+
+
 def test_whoami_is_an_alias_and_json_carries_account_and_mode(mock, home):
-    save_key(home, mock.url, mock.issue_key())
+    save_key(home, mock.url, mock.issue_key(channel="cli"))
     r = run_cli(["whoami", "--json"], home=home, api_url=mock.url)
     assert r.code == 0, r.stderr
     s = r.json()

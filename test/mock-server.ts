@@ -6,8 +6,9 @@
  * API's error shapes (422 lists and strings, 401 with WWW-Authenticate, 403,
  * 404, 409, 413, 429 with Retry-After, 503).
  *
- * The traveler's browser is simulated by visiting /connect/cli?code=... (approves
- * a sign-in) and /connect/muse?intake=... (signs the current revision).
+ * The traveler's browser is simulated by /connect/cli, a page with a form
+ * where the code is typed (submitting it to /connect/cli?code=... approves the
+ * sign-in), and /connect/muse?intake=... (signs the current revision).
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -29,6 +30,8 @@ export interface KeyRecord {
   scopes: string[];
   expiresAt: Date;
   revoked: boolean;
+  /** Creation order; at the key limit the oldest CLI key is retired. */
+  seq: number;
 }
 
 export interface DeviceRecord {
@@ -105,6 +108,8 @@ export interface MockOptions {
   noConflictHeader?: boolean;
   /** Behave like a server from before absolute discovery URLs. */
   relativeDiscovery?: boolean;
+  /** Behave like a server from before the security review: also send verification_uri_complete. */
+  sendCompleteUri?: boolean;
   traveler?: string;
 }
 
@@ -191,6 +196,8 @@ export class MockServer {
   options: MockOptions;
   /** The next N connector requests answer 429 with this Retry-After. */
   rateLimit = { remaining: 0, retryAfter: "1" as string | null };
+  /** The traveler who approves new sign-ins (default: options.traveler). */
+  deviceTraveler: string | null = null;
   /** Forced answers for upcoming token polls, such as ["pending", "slow_down"]. */
   deviceScript: string[] = [];
   /** Called for every request before it is handled. */
@@ -200,6 +207,7 @@ export class MockServer {
   private server: Server | null = null;
   private claimSeq = 0;
   private changeSeq = 0;
+  private keySeq = 0;
 
   constructor(options: MockOptions = {}) {
     this.options = options;
@@ -244,6 +252,7 @@ export class MockServer {
       scopes: options.scopes ?? ALL_SCOPES,
       expiresAt: new Date(Date.now() + (options.expiresInMs ?? 30 * 24 * 3_600_000)),
       revoked: false,
+      seq: ++this.keySeq,
     });
     return token;
   }
@@ -375,7 +384,8 @@ export class MockServer {
     const key = this.authenticate(r);
     const v1 = path.slice("/api/connectors/v1".length);
     if (v1 === "/key" && method === "GET") {
-      return { id: key.id, expires_at: zoned(key.expiresAt), scopes: key.scopes, account_email: key.traveler };
+      // Only keys from tourclaim login say whose account they are; others get null, as from the server.
+      return { id: key.id, expires_at: zoned(key.expiresAt), scopes: key.scopes, account_email: key.channel === "cli" ? key.traveler : null };
     }
     if (v1 === "/key" && method === "DELETE") {
       key.revoked = true;
@@ -482,7 +492,7 @@ export class MockServer {
       expiresIn: this.options.deviceExpiresIn ?? 600,
       interval: this.options.deviceInterval ?? 5,
       status: "pending",
-      traveler: this.traveler,
+      traveler: this.deviceTraveler ?? this.traveler,
       description: null,
       lastPoll: null,
       polls: 0,
@@ -493,7 +503,7 @@ export class MockServer {
       device_code: record.deviceCode,
       user_code: record.userCode,
       verification_uri: verification,
-      verification_uri_complete: `${verification}?code=${record.userCode}`,
+      ...(this.options.sendCompleteUri ? { verification_uri_complete: `${verification}?code=${record.userCode}` } : {}),
       expires_in: record.expiresIn,
       interval: record.interval,
     };
@@ -525,6 +535,20 @@ export class MockServer {
     }
     if (d.status === "denied") throw new HttpError(400, { error: "access_denied", error_description: d.description ?? "Declined." });
     if (d.status === "pending") throw new HttpError(400, { error: "authorization_pending" });
+    // At the limit of five connections, retire the traveler's oldest CLI key;
+    // keys made for other apps are never touched.
+    const active = [...this.keys.values()].filter((k) => k.traveler === d.traveler && !k.revoked && k.expiresAt.getTime() > Date.now());
+    if (active.length >= 5) {
+      const oldestCli = active.filter((k) => k.channel === "cli").sort((a, b) => a.seq - b.seq)[0];
+      if (!oldestCli) {
+        d.status = "denied";
+        throw new HttpError(400, {
+          error: "access_denied",
+          error_description: "This account already has five connections. Disconnect one at /connect/muse, then run `tourclaim login` again.",
+        });
+      }
+      oldestCli.revoked = true;
+    }
     d.status = "consumed";
     const token = this.issueKey({ traveler: d.traveler, scopes: d.scopes, channel: "cli" });
     const key = this.keys.get(token) as KeyRecord;
@@ -532,7 +556,10 @@ export class MockServer {
   }
 
   private browserApprove(code: string | null): string {
-    const d = code ? this.device(code) : undefined;
+    if (code === null) {
+      return '<!doctype html><title>TourClaim mock</title><form><label>Enter the code shown in your terminal <input name="code" autocomplete="off"></label> <button>Continue</button></form>';
+    }
+    const d = this.device(code.trim().toUpperCase());
     if (!d || d.status !== "pending") return "<!doctype html><title>TourClaim mock</title><p>No pending sign-in with that code.</p>";
     d.status = "approved";
     return `<!doctype html><title>TourClaim mock</title><p>Mock: approved sign-in ${d.userCode} for ${d.traveler}. Return to the terminal.</p>`;
