@@ -19,3 +19,6 @@ With the mock running, set `TOURCLAIM_API_URL=http://127.0.0.1:4010` and use `no
 - Keep `--json` output and exit codes stable; document any change in README.md and CHANGELOG.md.
 - When the API changes, update `openapi/connectors-v1.json` (`tourclaim schema > openapi/connectors-v1.json`), the types in `src/types.ts` and `src/fields.ts`, and the mock in `test/mock-server.ts`. `test/meta.test.ts` checks the field lists against the schema.
 - Write plain, direct prose in docs and messages.
+- Pin GitHub Actions to a full commit SHA with the version in a comment; Dependabot keeps them current.
+
+Releases are described in [RELEASING.md](RELEASING.md).

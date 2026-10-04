@@ -45,6 +45,7 @@
     "build": "node scripts/build.mjs",
     "test": "npm run build && node scripts/test.mjs",
     "mock": "node scripts/test.mjs --build-only && node .build/test/mock-main.js",
+    "version": "node scripts/sync-version.mjs && git add src/version.ts",
     "prepack": "npm run build"
   },
   "devDependencies": {

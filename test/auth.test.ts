@@ -176,6 +176,26 @@ describe("login (device flow)", () => {
     assert.match(r.stdout, /Revoked the previous key/);
   });
 
+  it("--force keeps the drafts started with the old key reachable", async () => {
+    mock.deviceScript = ["approve"];
+    assert.equal((await runCli(["login", "--no-browser"], { home, apiUrl: mock.url })).code, 0);
+    const store = new CredentialStore(join(home, ".config", "tourclaim", "credentials.json"), process.platform, () => {});
+    const oldKey = (await store.get(mock.url))!.api_key;
+    const started = await runCli(["intake", "start", "--json", "--set", "merchant_name=Example Air"], { home, apiUrl: mock.url });
+    const id = started.json().id;
+
+    mock.deviceScript = ["approve"];
+    const relogin = await runCli(["login", "--force", "--no-browser", "--json"], { home, apiUrl: mock.url });
+    assert.equal(relogin.code, 0, relogin.stderr);
+    assert.equal(mock.keyRecord(oldKey)?.revoked, true);
+    assert.doesNotMatch(relogin.stdout + relogin.stderr, /no longer be reached/);
+
+    const show = await runCli(["intake", "show", id, "--json"], { home, apiUrl: mock.url });
+    assert.equal(show.code, 0, show.stderr);
+    const list = await runCli(["intake", "list", "--json"], { home, apiUrl: mock.url });
+    assert.deepEqual(list.json().map((d: { id: string }) => d.id), [id]);
+  });
+
   it("refuses a key given as an argument without echoing it", async () => {
     const key = mock.issueKey();
     for (const argv of [["login", key], ["login", "--with-token", key]]) {
@@ -391,6 +411,20 @@ describe("logout and status", () => {
     assert.equal(s.signed_in, true);
     assert.equal(s.account_email, "pat@example.com");
     assert.equal(s.connector.openapi_url, `${mock.url}/api/connectors/v1/openapi.json`);
+    assert.equal(s.connector.cli_login_url, `${mock.url}/connect/cli`);
+  });
+
+  it("status still accepts relative discovery URLs from older servers", async () => {
+    const old = new MockServer({ relativeDiscovery: true });
+    await old.start();
+    try {
+      const r = await runCli(["status", "--json"], { home, apiUrl: old.url });
+      assert.equal(r.json().connector.connection_url, `${old.url}/connect/muse`);
+      assert.equal(r.json().connector.openapi_url, `${old.url}/api/connectors/v1/openapi.json`);
+      assert.equal(r.json().connector.cli_login_url, `${old.url}/connect/cli`);
+    } finally {
+      await old.stop();
+    }
   });
 
   it("status exits 3 when not signed in, and 7 when the connector is disabled", async () => {

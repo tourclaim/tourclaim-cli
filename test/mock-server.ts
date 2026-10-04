@@ -23,6 +23,8 @@ const MAX_BODY = 8 * 1024 * 1024;
 export interface KeyRecord {
   token: string;
   id: string;
+  /** "cli" for keys minted by tourclaim login; "key" for keys made at /connect/muse or by other apps. */
+  channel: "cli" | "key";
   traveler: string;
   scopes: string[];
   expiresAt: Date;
@@ -63,6 +65,10 @@ export interface IntakeRecord {
   approvedRevision: number | null;
   claimId: string | null;
   reads: number;
+  /** Set by tests: the authorization text changed after the traveler signed. */
+  approvalOutdated?: boolean;
+  /** Increases on every change; drafts list most recently changed first. */
+  changed: number;
 }
 
 export interface ClaimRecord {
@@ -95,6 +101,10 @@ export interface MockOptions {
   autoApproveDeviceAfterPolls?: number;
   /** Sign a draft awaiting approval after it has been read this many times. */
   autoSignAfterReads?: number;
+  /** Behave like a server from before X-TourClaim-Error: 409s carry only a message. */
+  noConflictHeader?: boolean;
+  /** Behave like a server from before absolute discovery URLs. */
+  relativeDiscovery?: boolean;
   traveler?: string;
 }
 
@@ -130,8 +140,8 @@ const MAGIC: Record<string, number[]> = {
   "image/png": [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
 };
 
-function naiveIso(date: Date): string {
-  return date.toISOString().slice(0, 19);
+function zoned(date: Date): string {
+  return date.toISOString().slice(0, 19) + "Z";
 }
 
 function sha256(text: string | Buffer): string {
@@ -158,6 +168,8 @@ class HttpError {
 }
 
 const fail = (status: number, detail: unknown, headers: Record<string, string> = {}) => new HttpError(status, { detail }, headers);
+let conflictHeaders = true;
+const conflict = (code: string, detail: string) => fail(409, detail, conflictHeaders ? { "X-TourClaim-Error": code } : {});
 const invalid = (issues: Issue[]) => new HttpError(422, { detail: issues });
 const issue = (loc: Array<string | number>, type: string): Issue => ({ loc, type, msg: "Invalid field value" });
 
@@ -187,6 +199,7 @@ export class MockServer {
   inject: Array<{ status: number; body: unknown; headers?: Record<string, string> }> = [];
   private server: Server | null = null;
   private claimSeq = 0;
+  private changeSeq = 0;
 
   constructor(options: MockOptions = {}) {
     this.options = options;
@@ -221,11 +234,12 @@ export class MockServer {
 
   // ---- test controls ----
 
-  issueKey(options: { traveler?: string; scopes?: string[]; expiresInMs?: number } = {}): string {
+  issueKey(options: { traveler?: string; scopes?: string[]; expiresInMs?: number; channel?: "cli" | "key" } = {}): string {
     const token = newKeyToken();
     this.keys.set(token, {
       token,
       id: randomUUID(),
+      channel: options.channel ?? "key",
       traveler: options.traveler ?? this.traveler,
       scopes: options.scopes ?? ALL_SCOPES,
       expiresAt: new Date(Date.now() + (options.expiresInMs ?? 30 * 24 * 3_600_000)),
@@ -297,9 +311,10 @@ export class MockServer {
     this.requests.push(record);
     this.onRequest?.(record);
 
-    const isV1 = url.pathname.startsWith("/api/connectors/v1/");
+    const isV1 = url.pathname.startsWith("/api/connectors/v1/") || url.pathname === "/api/connectors/v1";
     const headers: Record<string, string> = { "Cache-Control": "no-store" };
     if (isV1) headers["X-TourClaim-Mode"] = this.mode;
+    conflictHeaders = !this.options.noConflictHeader;
     try {
       if (raw === null) throw fail(413, "Request exceeds 8 MiB");
       if (body === Symbol.for("invalid-json")) throw invalid([issue(["body"], "json_invalid")]);
@@ -324,14 +339,16 @@ export class MockServer {
   private route(r: RecordedRequest, url: URL): unknown {
     const { method, path } = r;
     if (path === "/api/connectors/v1" && method === "GET") {
+      const base = this.options.relativeDiscovery ? "" : this.url;
       return {
         name: "TourClaim by Copernican",
         version: "1.0.0",
         enabled: this.enabled,
         mode: this.mode,
-        openapi_url: "/api/connectors/v1/openapi.json",
-        connection_url: "/connect/muse",
-        documentation_url: "/muse/developers",
+        openapi_url: `${base}/api/connectors/v1/openapi.json`,
+        connection_url: `${base}/connect/muse`,
+        ...(this.options.relativeDiscovery ? {} : { cli_login_url: `${base}/connect/cli` }),
+        documentation_url: `${base}/muse/developers`,
       };
     }
     if (path === "/api/connectors/v1/openapi.json" && method === "GET") return OPENAPI;
@@ -358,7 +375,7 @@ export class MockServer {
     const key = this.authenticate(r);
     const v1 = path.slice("/api/connectors/v1".length);
     if (v1 === "/key" && method === "GET") {
-      return { id: key.id, expires_at: naiveIso(key.expiresAt), scopes: key.scopes, account_email: key.traveler };
+      return { id: key.id, expires_at: zoned(key.expiresAt), scopes: key.scopes, account_email: key.traveler };
     }
     if (v1 === "/key" && method === "DELETE") {
       key.revoked = true;
@@ -373,6 +390,17 @@ export class MockServer {
         .filter((c) => `${c.issuer} ${c.name}`.toLowerCase().includes(needle))
         .slice(0, 30)
         .map((c) => ({ ...c, coverage_status: "requires_review" }));
+    }
+    if (v1 === "/intakes" && method === "GET") {
+      this.scope(key, "intakes:write");
+      const offsetText = url.searchParams.get("offset") ?? "0";
+      if (!/^\d+$/.test(offsetText)) throw invalid([issue(["query", "offset"], "int_parsing")]);
+      const offset = Number(offsetText);
+      return [...this.intakes.values()]
+        .filter((i) => i.traveler === key.traveler && !i.claimId && this.reaches(key, i))
+        .sort((a, b) => b.changed - a.changed)
+        .slice(offset, offset + 30)
+        .map((i) => this.intakeResponse(i));
     }
     if (v1 === "/intakes" && method === "POST") {
       this.scope(key, "intakes:write");
@@ -395,7 +423,7 @@ export class MockServer {
       if (action === "" && method === "DELETE") {
         this.scope(key, "intakes:write");
         const rec = this.owned(key, id);
-        if (rec.claimId) throw fail(409, "A submitted claim cannot be deleted here. See the data deletion instructions to request deletion.");
+        if (rec.claimId) throw conflict("intake_submitted", "A submitted claim cannot be deleted here. See the data deletion instructions to request deletion.");
         this.intakes.delete(rec.id);
         return undefined;
       }
@@ -498,9 +526,9 @@ export class MockServer {
     if (d.status === "denied") throw new HttpError(400, { error: "access_denied", error_description: d.description ?? "Declined." });
     if (d.status === "pending") throw new HttpError(400, { error: "authorization_pending" });
     d.status = "consumed";
-    const token = this.issueKey({ traveler: d.traveler, scopes: d.scopes });
+    const token = this.issueKey({ traveler: d.traveler, scopes: d.scopes, channel: "cli" });
     const key = this.keys.get(token) as KeyRecord;
-    return { api_key: token, expires_at: naiveIso(key.expiresAt), scopes: key.scopes, grant_id: key.id };
+    return { api_key: token, expires_at: zoned(key.expiresAt), scopes: key.scopes, grant_id: key.id };
   }
 
   private browserApprove(code: string | null): string {
@@ -535,9 +563,19 @@ export class MockServer {
     if (!key.scopes.includes(name)) throw fail(403, "Connection does not permit this action");
   }
 
+  /**
+   * A key reaches the drafts it started. A CLI key also reaches drafts any of
+   * the same traveler's CLI keys started, even revoked or expired ones.
+   */
+  private reaches(key: KeyRecord, rec: IntakeRecord): boolean {
+    if (rec.keyId === key.id) return true;
+    const starter = [...this.keys.values()].find((k) => k.id === rec.keyId);
+    return key.channel === "cli" && starter?.channel === "cli" && starter.traveler === key.traveler;
+  }
+
   private owned(key: KeyRecord, id: string): IntakeRecord {
     const rec = this.intakes.get(id);
-    if (!rec || rec.keyId !== key.id) throw fail(404, "Intake not found for this connection");
+    if (!rec || rec.traveler !== key.traveler || !this.reaches(key, rec)) throw fail(404, "Intake not found for this connection");
     return rec;
   }
 
@@ -652,7 +690,7 @@ export class MockServer {
     let state: string;
     if (rec.claimId) state = "submitted";
     else if (missing.length) state = "collecting";
-    else if (rec.approvedRevision === rec.revision) state = "ready_to_submit";
+    else if (rec.approvedRevision === rec.revision && !rec.approvalOutdated) state = "ready_to_submit";
     else state = "needs_approval";
     const counts: Record<string, number> = {};
     const evidence = rec.evidence.map((e) => {
@@ -699,8 +737,8 @@ export class MockServer {
     const requestHash = sha256(JSON.stringify(fields, Object.keys(fields).sort()));
     const existing = [...this.intakes.values()].find((i) => i.traveler === key.traveler && i.idempotencyKey === idem);
     if (existing) {
-      if (existing.requestHash !== requestHash) throw fail(409, "Idempotency key was already used with different fields");
-      if (existing.keyId !== key.id) throw fail(409, "This intake belongs to an earlier connection; use a new idempotency key");
+      if (existing.requestHash !== requestHash) throw conflict("idempotency_key_reused", "Idempotency key was already used with different fields");
+      if (existing.keyId !== key.id) throw conflict("idempotency_key_other_connection", "This intake belongs to an earlier connection; use a new idempotency key");
       return this.intakeResponse(existing);
     }
     this.checkCard(fields);
@@ -716,6 +754,7 @@ export class MockServer {
       approvedRevision: null,
       claimId: null,
       reads: 0,
+      changed: ++this.changeSeq,
     };
     this.intakes.set(rec.id, rec);
     return this.intakeResponse(rec);
@@ -731,10 +770,11 @@ export class MockServer {
   }
 
   private changeRevision(rec: IntakeRecord, expected: number): void {
-    if (rec.claimId) throw fail(409, "Submitted intake is read-only");
-    if (rec.revision !== expected) throw fail(409, "Intake changed; retrieve the current revision and try again");
+    if (rec.claimId) throw conflict("intake_submitted", "Submitted intake is read-only");
+    if (rec.revision !== expected) throw conflict("stale_revision", "Intake changed; retrieve the current revision and try again");
     rec.revision += 1;
     rec.approvedRevision = null;
+    rec.changed = ++this.changeSeq;
   }
 
   private update(rec: IntakeRecord, body: unknown): unknown {
@@ -757,7 +797,7 @@ export class MockServer {
   private addEvidence(rec: IntakeRecord, revision: number, kind: "email" | "attachment", sourceHash: string, data: string): unknown {
     const previous = rec.evidence.find((e) => e.sourceHash === sourceHash);
     if (previous) {
-      if (previous.data !== data) throw fail(409, "Evidence source was already imported with different contents");
+      if (previous.data !== data) throw conflict("evidence_conflict", "Evidence source was already imported with different contents");
       return this.intakeResponse(rec);
     }
     if (rec.evidence.length >= 30) throw fail(422, "An intake supports at most 30 evidence items");
@@ -816,10 +856,14 @@ export class MockServer {
   private submit(rec: IntakeRecord, body: unknown): unknown {
     const { revision } = this.checkRevisionBody(body, []);
     if (rec.claimId) return this.claimResponse(this.claims.get(rec.claimId) as ClaimRecord);
-    if (rec.revision !== revision || rec.approvedRevision !== rec.revision) throw fail(409, "The traveler must approve this exact intake revision");
-    if (this.missing(rec.fields).length) throw fail(409, "Intake is incomplete");
+    // Same order as the server: a revision mismatch is reported as approval_required.
+    if (rec.revision !== revision) throw conflict("approval_required", "The traveler must approve this exact intake revision");
+    // Simulates the authorization text changing after the traveler signed.
+    if (rec.approvalOutdated) throw conflict("approval_outdated", "Authorization changed; ask the traveler to review again");
+    if (rec.approvedRevision !== rec.revision) throw conflict("approval_required", "The traveler must approve this exact intake revision");
+    if (this.missing(rec.fields).length) throw conflict("intake_incomplete", "Intake is incomplete");
     const bookingKey = `${rec.traveler}|${String(rec.fields.merchant_name).toLowerCase()}|${String(rec.fields.booking_ref).toLowerCase()}`;
-    if ([...this.claims.values()].some((c) => c.bookingKey === bookingKey)) throw fail(409, "A claim for this booking already exists");
+    if ([...this.claims.values()].some((c) => c.bookingKey === bookingKey)) throw conflict("duplicate_booking", "A claim for this booking already exists");
     const claim: ClaimRecord = {
       id: randomUUID(),
       intakeId: rec.id,

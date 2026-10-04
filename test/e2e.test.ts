@@ -62,6 +62,8 @@ describe("end to end (dist/cli.js)", () => {
     assert.equal(started.code, 0, started.stderr);
     const id: string = started.json().id;
     assert.equal(started.json().state, "collecting");
+    const drafts = await run(["intake", "list", "--json"]);
+    assert.deepEqual(drafts.json().map((d: { id: string }) => d.id), [id]);
 
     const set = await run([
       "intake",

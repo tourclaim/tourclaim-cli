@@ -39,7 +39,8 @@ describe("intake and claims", () => {
     ({ home, cleanup } = await tempHome());
     // A traveler per test: claims and one-claim-per-booking are per traveler.
     traveler = `traveler${++travelerCount}@example.com`;
-    key = mock.issueKey({ traveler });
+    // A key as tourclaim login (device flow) mints it.
+    key = mock.issueKey({ traveler, channel: "cli" });
     await new CredentialStore(join(home, ".config", "tourclaim", "credentials.json"), process.platform, () => {}).set(mock.url, {
       api_key: key,
       expires_at: null,
@@ -100,7 +101,7 @@ describe("intake and claims", () => {
       assert.equal(first.json().id, again.json().id);
       const different = await cli(["intake", "start", "--json", "--idempotency-key", "retry-key-0001", "--set", "booking_ref=ABC-2"]);
       assert.equal(different.code, 4);
-      assert.equal(different.jsonError().code, "conflict");
+      assert.equal(different.jsonError().code, "idempotency_key_reused");
       assert.equal(different.jsonError().idempotency_key, "retry-key-0001");
       assert.match(different.jsonError().message, /new --idempotency-key/);
     });
@@ -196,7 +197,7 @@ describe("intake and claims", () => {
       const r = await cli(["intake", "set", id, "booking_ref=X-1", "--json"]);
       assert.equal(r.code, 4);
       const err = r.jsonError();
-      assert.equal(err.code, "conflict");
+      assert.equal(err.code, "stale_revision");
       assert.equal(err.current_revision, 2);
       assert.match(err.message, /now at revision 2 .*used revision 1.*Nothing was saved/);
       assert.equal(mock.requestsTo("PATCH", `/api/connectors/v1/intakes/${id}`).length, 1);
@@ -256,7 +257,8 @@ describe("intake and claims", () => {
       const r = await cli(["intake", "show", id, "--json"], { env: { TOURCLAIM_API_KEY: other } });
       assert.equal(r.code, 6);
       assert.equal(r.jsonError().code, "not_found");
-      assert.match(r.jsonError().message, /Drafts belong to the key that created them/);
+      assert.match(r.jsonError().message, /reachable only with the key that started them/);
+      assert.match(r.jsonError().message, /tourclaim intake list/);
     });
 
     it("401 exits 3; no key at all exits 3 without a request", async () => {
@@ -489,8 +491,8 @@ describe("intake and claims", () => {
     it("explains what is missing when the draft is incomplete", async () => {
       const id = await start(["merchant_name=Example Air"]);
       const r = await cli(["intake", "sign", id, "--json"]);
-      assert.equal(r.code, 1);
-      assert.equal(r.jsonError().code, "incomplete");
+      assert.equal(r.code, 4);
+      assert.equal(r.jsonError().code, "intake_incomplete");
       assert.ok(r.jsonError().missing_fields.includes("booking_ref"));
     });
 
@@ -548,7 +550,7 @@ describe("intake and claims", () => {
       const id = await start();
       const r = await cli(["intake", "submit", id, "--json"]);
       assert.equal(r.code, 4);
-      assert.equal(r.jsonError().code, "not_signed");
+      assert.equal(r.jsonError().code, "approval_required");
       assert.equal(r.jsonError().review_url, `${mock.url}/connect/muse?intake=${id}`);
       assert.equal(mock.requestsTo("POST", `/api/connectors/v1/intakes/${id}/submit`).length, 0);
     });
@@ -583,6 +585,7 @@ describe("intake and claims", () => {
       mock.sign(second);
       const r = await cli(["intake", "submit", second, "--json"]);
       assert.equal(r.code, 4);
+      assert.equal(r.jsonError().code, "duplicate_booking");
       assert.match(r.jsonError().message, /already exists/);
     });
 
@@ -613,6 +616,134 @@ describe("intake and claims", () => {
     it("claims show exits 6 for an unknown claim", async () => {
       const r = await cli(["claims", "show", "nope"]);
       assert.equal(r.code, 6);
+    });
+  });
+
+  describe("list", () => {
+    it("lists open drafts, most recently changed first, without submitted ones", async () => {
+      const first = await start(["merchant_name=First Tours"]);
+      const second = await start(["merchant_name=Second Air", "booking_ref=SA-1"]);
+      const submitted = await start();
+      mock.sign(submitted);
+      assert.equal((await cli(["intake", "submit", submitted])).code, 0);
+      assert.equal((await cli(["intake", "set", first, "trip_date=2026-03-04"])).code, 0);
+
+      const json = await cli(["intake", "list", "--json"]);
+      assert.equal(json.code, 0, json.stderr);
+      assert.deepEqual(json.json().map((d: { id: string }) => d.id), [first, second]);
+      assert.equal(json.json()[0].fields.trip_date, "2026-03-04");
+
+      const human = await cli(["intake", "list"]);
+      assert.match(human.stdout, /^DRAFT\s+STATE\s+MERCHANT\s+BOOKING\s+MISSING/);
+      assert.match(human.stdout, new RegExp(`${first}\\s+collecting\\s+First Tours\\s+-\\s+8`));
+      assert.match(human.stdout, new RegExp(`${second}\\s+collecting\\s+Second Air\\s+SA-1\\s+8`));
+      assert.doesNotMatch(human.stdout, new RegExp(submitted));
+    });
+
+    it("says when there are none", async () => {
+      const r = await cli(["intake", "list"]);
+      assert.equal(r.code, 0);
+      assert.match(r.stdout, /No open drafts\. Start one with: tourclaim intake start/);
+      assert.deepEqual((await cli(["intake", "list", "--json"])).json(), []);
+    });
+
+    it("a new tourclaim login key reaches drafts from earlier login keys, even revoked ones", async () => {
+      const id = await start(["merchant_name=Before Relogin"]);
+      mock.keys.get(key)!.revoked = true;
+      const next = mock.issueKey({ traveler, channel: "cli" });
+      const list = await cli(["intake", "list", "--json"], { env: { TOURCLAIM_API_KEY: next } });
+      assert.equal(list.code, 0, list.stderr);
+      assert.deepEqual(list.json().map((d: { id: string }) => d.id), [id]);
+      const set = await cli(["intake", "set", id, "booking_ref=AFTER-1", "--json"], { env: { TOURCLAIM_API_KEY: next } });
+      assert.equal(set.code, 0, set.stderr);
+    });
+
+    it("drafts from other apps' keys and CLI drafts do not see each other", async () => {
+      const cliDraft = await start(["merchant_name=From CLI"]);
+      const other = mock.issueKey({ traveler, channel: "key" });
+      const otherDraft = await cli(["intake", "start", "--json", "--set", "merchant_name=From Muse"], { env: { TOURCLAIM_API_KEY: other } });
+      const otherId = otherDraft.json().id;
+      const fromOther = await cli(["intake", "list", "--json"], { env: { TOURCLAIM_API_KEY: other } });
+      assert.deepEqual(fromOther.json().map((d: { id: string }) => d.id), [otherId]);
+      const fromCli = await cli(["intake", "list", "--json"]);
+      assert.deepEqual(fromCli.json().map((d: { id: string }) => d.id), [cliDraft]);
+      const show = await cli(["intake", "show", otherId]);
+      assert.equal(show.code, 6);
+      const stranger = mock.issueKey({ traveler: "someone-else@example.com", channel: "cli" });
+      const none = await cli(["intake", "list", "--json"], { env: { TOURCLAIM_API_KEY: stranger } });
+      assert.deepEqual(none.json(), []);
+    });
+
+    it("pages 30 at a time and points at the next page", async () => {
+      for (let i = 0; i < 31; i++) await start([`booking_ref=PAGE-${i}`]);
+      const page = await cli(["intake", "list"]);
+      assert.match(page.stdout, /More drafts may exist: tourclaim intake list --offset 30/);
+      const next = await cli(["intake", "list", "--offset", "30", "--json"]);
+      assert.equal(next.json().length, 1);
+      assert.equal(mock.requestsTo("GET", "/api/connectors/v1/intakes").at(-1)?.query.get("offset"), "30");
+    });
+  });
+
+  describe("409 causes", () => {
+    it("uses the X-TourClaim-Error code as the JSON error code", async () => {
+      const id = await start();
+      let r = await cli(["intake", "set", id, "booking_ref=X-2", "--revision", "9", "--json"]);
+      assert.equal(r.code, 4);
+      assert.equal(r.jsonError().code, "stale_revision");
+      assert.equal(r.jsonError().current_revision, 1);
+
+      r = await cli(["intake", "submit", id, "--revision", "9", "--json"]);
+      assert.equal(r.code, 4);
+      assert.equal(r.jsonError().code, "approval_required");
+      assert.match(r.jsonError().message, /has not signed revision 1/);
+      assert.equal(r.jsonError().review_url, `${mock.url}/connect/muse?intake=${id}`);
+    });
+
+    it("evidence_conflict: the same file again under another type", async () => {
+      const id = await start([]);
+      const file = join(home, "receipt.png");
+      await writeFile(file, PNG);
+      assert.equal((await cli(["intake", "attach", id, file, "--type", "receipt", "--yes"])).code, 0);
+      const r = await cli(["intake", "attach", id, file, "--type", "other", "--yes", "--json"]);
+      assert.equal(r.code, 4);
+      assert.equal(r.jsonError().code, "evidence_conflict");
+      assert.match(r.jsonError().message, /already has that evidence with different details/);
+    });
+
+    it("approval_outdated asks the traveler to sign again", async () => {
+      const id = await start();
+      mock.sign(id);
+      mock.intakes.get(id)!.approvalOutdated = true;
+      const r = await cli(["intake", "submit", id, "--revision", "1", "--json"]);
+      assert.equal(r.code, 4);
+      assert.equal(r.jsonError().code, "approval_outdated");
+      assert.match(r.jsonError().message, /signature is out of date/);
+      assert.match(r.jsonError().message, /in their own browser, at: http:\/\/127\.0\.0\.1:\d+\/connect\/muse\?intake=/);
+      assert.match(r.jsonError().message, new RegExp(`tourclaim intake sign ${id} --wait$`));
+    });
+
+    it("falls back to the message when the header is missing", async () => {
+      const old = new MockServer({ noConflictHeader: true });
+      await old.start();
+      try {
+        const oldKey = old.issueKey({ traveler, channel: "cli" });
+        const run = (argv: string[]) => runCli(argv, { home, apiUrl: old.url, env: { TOURCLAIM_API_KEY: oldKey } });
+        await run(["intake", "start", "--json", "--idempotency-key", "fallback-0001", "--set", "booking_ref=A"]);
+        let r = await run(["intake", "start", "--json", "--idempotency-key", "fallback-0001", "--set", "booking_ref=B"]);
+        assert.equal(r.jsonError().code, "idempotency_key_reused");
+        assert.match(r.jsonError().message, /new --idempotency-key/);
+        const id = (await run(["intake", "start", "--json", ...COMPLETE.flatMap((p) => ["--set", p])])).json().id;
+        r = await run(["intake", "set", id, "booking_ref=Z", "--revision", "5", "--json"]);
+        assert.equal(r.jsonError().code, "stale_revision");
+        old.sign(id);
+        assert.equal((await run(["intake", "submit", id])).code, 0);
+        r = await run(["intake", "delete", id, "--yes", "--json"]);
+        assert.equal(r.code, 4);
+        assert.equal(r.jsonError().code, "intake_submitted");
+        assert.ok(!old.requests.some((q) => q.method === "PATCH" && q.headers["x-tourclaim-error"]));
+      } finally {
+        await old.stop();
+      }
     });
   });
 

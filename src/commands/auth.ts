@@ -133,7 +133,7 @@ async function pollForToken(ctx: Context, api: ApiClient, code: DeviceCodeRespon
         continue;
       case "access_denied":
         throw new CliError(
-          sentences("The sign-in was declined", err.error_description, "Nothing was saved"),
+          sentences("The sign-in was declined", err.error_description, "Nothing was saved."),
           ExitCode.AUTH,
           "access_denied",
         );
@@ -226,7 +226,10 @@ export const login: Command = {
       value: "<scope>",
       description: `Ask only for these permissions (repeat or comma-separate): ${SCOPES.join(", ")}. Default: all.`,
     },
-    force: { type: "boolean", description: "Replace a valid stored key. The old key is revoked; drafts started with it can no longer be reached." },
+    force: {
+      type: "boolean",
+      description: "Replace a valid stored key with a new one and revoke the old key (a traveler can hold at most 5). Drafts stay reachable.",
+    },
   },
   examples: ["tourclaim login", "tourclaim login --json --no-browser", "tourclaim login --with-token < key.txt"],
   async run(ctx, args) {
@@ -249,7 +252,7 @@ export const login: Command = {
     if (existing && existingCheck && !force) {
       if (withToken) {
         throw new UsageError(
-          `Already signed in to ${ctx.apiUrl}${existingCheck.info.account_email ? ` as ${existingCheck.info.account_email}` : ""}. Pass --force to replace the stored key (drafts started with it can no longer be reached).`,
+          `Already signed in to ${ctx.apiUrl}${existingCheck.info.account_email ? ` as ${existingCheck.info.account_email}` : ""}. Pass --force to replace the stored key; the old key is revoked.`,
         );
       }
       report(ctx, { info: existingCheck.info, mode: existingCheck.mode, credential: existing, replacedKeyId: null, already: true });
@@ -309,7 +312,7 @@ export const logout: Command = {
   summary: "Revoke the key and remove it from this computer",
   usage: "tourclaim logout",
   description:
-    "Revokes the key in use on the server, then deletes the stored copy (even if the server already considers it invalid).\nDrafts started with the key can no longer be reached afterwards; submitted claims are not affected.",
+    "Revokes the key in use on the server, then deletes the stored copy (even if the server already considers it invalid).\nUnsubmitted drafts started with tourclaim login stay reachable the next time you run tourclaim login; submitted claims are not affected.",
   maxArgs: 0,
   async run(ctx) {
     const active = await ctx.activeKey();
@@ -394,6 +397,7 @@ export const status: Command = {
           openapi_url: absoluteUrl(ctx.apiUrl, info.openapi_url),
           connection_url: connectionUrl,
           documentation_url: absoluteUrl(ctx.apiUrl, info.documentation_url),
+          cli_login_url: absoluteUrl(ctx.apiUrl, info.cli_login_url || "/connect/cli"),
         },
         signed_in: signedIn,
         account_email: key?.account_email ?? null,

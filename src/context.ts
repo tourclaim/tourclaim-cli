@@ -92,12 +92,12 @@ export class Context {
     if (left > EXPIRY_WARNING_MS) return;
     this.expiryWarned = true;
     if (left <= 0) {
-      this.out.warn(`Your TourClaim key expired on ${formatTime(stored.expires_at)}. Run: tourclaim login --force`);
+      this.out.warn(`Your TourClaim key expired on ${formatTime(stored.expires_at)}. Run: tourclaim login`);
     } else {
       const days = Math.floor(left / (24 * 3_600_000));
       const when = days >= 1 ? `in ${days} day${days === 1 ? "" : "s"}` : "within a day";
       this.out.warn(
-        `Your TourClaim key expires ${when} (${formatTime(stored.expires_at)}). Submit open drafts before then: a new key cannot reach drafts started with this one.`,
+        `Your TourClaim key expires ${when} (${formatTime(stored.expires_at)}). Keys are not renewed; to get a new one now, run: tourclaim login --force`,
       );
     }
   }

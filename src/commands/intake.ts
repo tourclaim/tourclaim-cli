@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { basename } from "node:path";
-import { API_PREFIX, ApiError, sentences } from "../api.js";
+import { API_PREFIX, ApiError, sentences, type ApiClient } from "../api.js";
 import { flag, intArg, str, strs, type Command } from "../command.js";
 import { absoluteUrl } from "../config.js";
 import type { Context } from "../context.js";
@@ -9,7 +9,7 @@ import { parseEml } from "../eml.js";
 import { CliError, ExitCode, UsageError } from "../errors.js";
 import { buildFields } from "../fields.js";
 import { detectContentType, formatBytes, MAX_ATTACHMENT_BYTES } from "../filetype.js";
-import { claimLines, intakeLines, nextStepLines } from "../format.js";
+import { claimLines, intakeLines, nextStepLines, table } from "../format.js";
 import {
   DOC_TYPES,
   EMAIL_PROVIDERS,
@@ -19,6 +19,7 @@ import {
 } from "../types.js";
 import {
   confirm,
+  conflict,
   conflictError,
   draftNotFound,
   getIntake,
@@ -33,6 +34,7 @@ const FILENAME = /^[^/\\\x00-\x1f]+$/;
 const MAX_EMAIL_TEXT = 30_000;
 const SIGN_POLL_MS = 5_000;
 const DEFAULT_SIGN_TIMEOUT_S = 900;
+const PAGE_SIZE = 30;
 
 const REVISION_OPTION = {
   type: "string" as const,
@@ -92,7 +94,7 @@ export const intakeStart: Command = {
     "The result lists what is still missing and up to three questions to ask next.",
     "A random Idempotency-Key is generated unless you pass one. If the command fails or times out,",
     "rerun it with the same --idempotency-key and the same fields to get the same draft instead of a second one.",
-    "The draft belongs to the key you are signed in with; another key (even after signing in again) cannot reach it.",
+    "Check tourclaim intake list first: the traveler may already have a draft for this trip.",
     "",
     "Fields: merchant_name, booking_ref, trip_date (YYYY-MM-DD), booking_amount, refunded_amount (decimal, USD),",
     "currency (USD), card_product_id (from cards search), reason_category, narrative, cancellation_policy,",
@@ -125,9 +127,9 @@ export const intakeStart: Command = {
     } catch (error) {
       if (error instanceof CliError) {
         error.extra.idempotency_key = key;
-        const transient = error instanceof ApiError && error.status === 409 && /concurrent|retry/i.test(String(error.detail ?? ""));
-        if (error instanceof ApiError && error.status === 409 && !transient) {
-          error.message = `${error.message.replace(/\.?$/, ".")} Use a new --idempotency-key (or leave it out) to start a different draft.`;
+        const transient = error.code === "concurrent_request";
+        if (error.code === "idempotency_key_reused" || error.code === "idempotency_key_other_connection") {
+          error.message = sentences(error.message, "Use a new --idempotency-key (or leave it out) to start a different draft.");
         } else if (transient || !(error instanceof ApiError) || error.status >= 429) {
           error.message = `${error.message} The draft may or may not have been created. Retry with the same fields and --idempotency-key ${key} so a duplicate is not created.`;
         }
@@ -139,7 +141,52 @@ export const intakeStart: Command = {
       return ExitCode.OK;
     }
     ctx.out.lines(intakeLines(intake, "Started draft"));
-    ctx.out.lines(["", "This draft belongs to the key you are signed in with. Keep its id; signing in again starts a new key that cannot reach it."]);
+    ctx.out.lines(["", "Find it again any time with: tourclaim intake list"]);
+    return ExitCode.OK;
+  },
+};
+
+export const intakeList: Command = {
+  path: ["intake", "list"],
+  summary: "List drafts not yet submitted",
+  usage: "tourclaim intake list [--offset <n>]",
+  description: [
+    "Lists the traveler's drafts that were never submitted, most recently changed first, 30 at a time.",
+    "A key from tourclaim login reaches the drafts started from any tourclaim login on the same account, so",
+    "signing in again or a key running out does not lose a draft. Drafts started by other apps (such as Muse),",
+    "or with a key saved by login --with-token, are listed only with the key that started them.",
+    "Submitted drafts are claims: see tourclaim claims list.",
+  ].join("\n"),
+  options: {
+    offset: { type: "string", value: "<n>", description: "How many drafts to skip (default 0)." },
+  },
+  maxArgs: 0,
+  async run(ctx, args) {
+    const offset = intArg(args, "offset") ?? 0;
+    const api = await ctx.authed();
+    const { data } = await api.request<IntakeResponse[]>(`${API_PREFIX}/intakes`, { query: { offset } });
+    if (ctx.json) {
+      ctx.out.data(data);
+      return ExitCode.OK;
+    }
+    if (!data.length) {
+      ctx.out.line(offset ? "No more drafts." : "No open drafts. Start one with: tourclaim intake start");
+      return ExitCode.OK;
+    }
+    ctx.out.lines(
+      table(
+        ["DRAFT", "STATE", "MERCHANT", "BOOKING", "MISSING"],
+        data.map((d) => [
+          d.id,
+          d.state,
+          d.fields?.merchant_name ?? "-",
+          d.fields?.booking_ref ?? "-",
+          d.missing_fields.length ? String(d.missing_fields.length) : "-",
+        ]),
+      ),
+    );
+    if (data.length >= PAGE_SIZE) ctx.out.lines(["", `More drafts may exist: tourclaim intake list --offset ${offset + data.length}`]);
+    ctx.out.lines(["", "Show one with: tourclaim intake show <draft>"]);
     return ExitCode.OK;
   },
 };
@@ -204,7 +251,7 @@ export const intakeSet: Command = {
     const api = await ctx.authed();
     const { revision, before } = await resolveRevision(api, id, intArg(args, "revision", 1));
     if (before?.state === "submitted") {
-      throw new CliError(`Draft ${id} has been submitted and is read-only.`, ExitCode.CONFLICT, "conflict", { state: "submitted" });
+      throw conflict(`Draft ${id} has been submitted and is read-only. Nothing was saved.`, "intake_submitted", { state: "submitted" });
     }
     const intake = await writeCall(ctx, id, revision, async () =>
       (await api.request<IntakeResponse>(intakePath(id), { method: "PATCH", body: { expected_revision: revision, fields } })).data,
@@ -239,14 +286,13 @@ export const intakeDelete: Command = {
       await api.request(intakePath(id), { method: "DELETE" });
     } catch (error) {
       if (error instanceof ApiError && error.status === 404) throw draftNotFound(id, error);
-      if (error instanceof ApiError && error.status === 409) {
-        throw new CliError(
+      if (error instanceof ApiError && error.status === 409 && error.code === "intake_submitted") {
+        throw conflict(
           `Draft ${id} was submitted as a claim and cannot be deleted here. To request deletion, see ${absoluteUrl(ctx.apiUrl, "/muse/data-deletion")}`,
-          ExitCode.CONFLICT,
-          "conflict",
-          { status: 409 },
+          error.code,
         );
       }
+      if (error instanceof ApiError && error.status === 409) throw await conflictError(api, id, error, undefined);
       throw error;
     }
     if (ctx.json) ctx.out.data({ id, deleted: true });
@@ -489,14 +535,7 @@ export const intakeSign: Command = {
     const api = await ctx.authed();
     const intake = await getIntake(api, id);
 
-    if (intake.state === "collecting") {
-      throw new CliError(
-        `Draft ${id} is not complete; it still needs: ${intake.missing_fields.join(", ")}. Save those with tourclaim intake set first.`,
-        ExitCode.ERROR,
-        "incomplete",
-        { missing_fields: intake.missing_fields },
-      );
-    }
+    if (intake.state === "collecting") throw incomplete(id, intake);
     if (intake.state === "ready_to_submit" || intake.state === "submitted") {
       if (ctx.json) ctx.out.data(intake);
       else if (intake.state === "submitted") ctx.out.line(`Draft ${id} was already signed and submitted as claim ${intake.claim_id}.`);
@@ -540,12 +579,11 @@ export const intakeSign: Command = {
         return ExitCode.OK;
       }
       if (current.state === "collecting") {
-        throw new CliError(
-          `Draft ${id} changed while waiting and needs answers again: ${current.missing_fields.join(", ")}.`,
-          ExitCode.CONFLICT,
-          "conflict",
-          { state: current.state, current_revision: current.revision },
-        );
+        throw conflict(`Draft ${id} changed while waiting and needs answers again: ${current.missing_fields.join(", ")}.`, "intake_incomplete", {
+          state: current.state,
+          current_revision: current.revision,
+          missing_fields: current.missing_fields,
+        });
       }
     }
     throw new CliError(
@@ -576,14 +614,8 @@ export const intakeSubmit: Command = {
     let revision = intArg(args, "revision", 1);
     if (revision === undefined) {
       const intake = await getIntake(api, id);
-      if (intake.state === "collecting") {
-        throw new CliError(`Draft ${id} is incomplete; it still needs: ${intake.missing_fields.join(", ")}.`, ExitCode.CONFLICT, "incomplete", {
-          missing_fields: intake.missing_fields,
-        });
-      }
-      if (intake.state === "needs_approval") {
-        throw notSigned(id, intake);
-      }
+      if (intake.state === "collecting") throw incomplete(id, intake);
+      if (intake.state === "needs_approval") throw notSigned(id, intake);
       revision = intake.revision;
     }
     let claim: ClaimResponse;
@@ -592,21 +624,7 @@ export const intakeSubmit: Command = {
         await intakeCall(id, () => api.request<ClaimResponse>(intakePath(id, "/submit"), { method: "POST", body: { expected_revision: revision } }))
       ).data;
     } catch (error) {
-      if (error instanceof ApiError && error.status === 409) {
-        let current: IntakeResponse | null = null;
-        try {
-          current = await getIntake(api, id);
-        } catch {
-          // Fall back to the API's own explanation.
-        }
-        if (current?.state === "needs_approval") throw notSigned(id, current, typeof error.detail === "string" ? error.detail : undefined);
-        throw new CliError(
-          sentences(typeof error.detail === "string" ? error.detail : "The draft cannot be submitted", `Check it with: tourclaim intake show ${id}`),
-          ExitCode.CONFLICT,
-          "conflict",
-          { status: 409, ...(current ? { state: current.state, current_revision: current.revision } : {}) },
-        );
-      }
+      if (error instanceof ApiError && error.status === 409) throw await submitConflict(api, id, error);
       throw error;
     }
     if (ctx.json) {
@@ -622,12 +640,57 @@ export const intakeSubmit: Command = {
   },
 };
 
-function notSigned(id: string, intake: IntakeResponse, apiReason?: string): CliError {
-  const why = apiReason ? `${apiReason.replace(/\.?$/, ".")} ` : "";
-  return new CliError(
-    `${why}The traveler has not signed revision ${intake.revision} of draft ${id}. Only they can sign, in their own browser. Review link: ${intake.review_url ?? "(none returned)"} Wait for the signature with: tourclaim intake sign ${id} --wait`,
-    ExitCode.CONFLICT,
-    "not_signed",
-    { review_url: intake.review_url, current_revision: intake.revision },
+function incomplete(id: string, intake: IntakeResponse): CliError {
+  return conflict(
+    `Draft ${id} is not complete; it still needs: ${intake.missing_fields.join(", ")}. Save those with tourclaim intake set first.`,
+    "intake_incomplete",
+    { state: intake.state, current_revision: intake.revision, missing_fields: intake.missing_fields },
   );
+}
+
+function notSigned(id: string, intake: IntakeResponse, code = "approval_required", reason?: string): CliError {
+  const why =
+    code === "approval_outdated"
+      ? "The traveler's signature is out of date (it is older than 7 days, or the authorization changed); they must review and sign again."
+      : `The traveler has not signed revision ${intake.revision} of draft ${id}.`;
+  const link = intake.review_url ? `Only they can sign, in their own browser, at: ${intake.review_url}` : "Only they can sign, in their own browser.";
+  return conflict(
+    sentences(reason && code !== "approval_outdated" ? reason : undefined, why, link, `Get the link and wait for the signature with: tourclaim intake sign ${id} --wait`),
+    code,
+    { review_url: intake.review_url, current_revision: intake.revision, state: intake.state },
+  );
+}
+
+/** Explains a refused submission by its X-TourClaim-Error code, after re-reading the draft. */
+async function submitConflict(api: ApiClient, id: string, error: ApiError): Promise<CliError> {
+  let current: IntakeResponse | null = null;
+  try {
+    current = await getIntake(api, id);
+  } catch {
+    // Fall back to the API's own explanation.
+  }
+  const reason = typeof error.detail === "string" ? error.detail : "The draft cannot be submitted";
+  const where = current ? { state: current.state, current_revision: current.revision } : {};
+  switch (error.code) {
+    case "approval_required":
+    case "approval_outdated":
+      if (current) return notSigned(id, current, error.code, reason);
+      break;
+    case "intake_incomplete":
+      if (current) return incomplete(id, current);
+      break;
+    case "duplicate_booking":
+      return conflict(
+        sentences(reason, "One claim per booking: this booking reference already has a claim for this traveler. See tourclaim claims list"),
+        error.code,
+        where,
+      );
+    case "stale_revision":
+      return conflict(
+        sentences(reason, `The draft changed${current ? ` (it is now at revision ${current.revision}, state ${current.state})` : ""}. Check it with: tourclaim intake show ${id}`),
+        error.code,
+        where,
+      );
+  }
+  return conflict(sentences(reason, `Check it with: tourclaim intake show ${id}`), error.code, where);
 }

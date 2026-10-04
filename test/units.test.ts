@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { describeErrorBody, retryAfterSeconds, sentences } from "../src/api.js";
+import { CONFLICT_CODES, conflictCode, describeErrorBody, retryAfterSeconds, sentences } from "../src/api.js";
 import { normalizeApiUrl, resolveApiUrl, userAgent } from "../src/config.js";
 import { decodeHeader, parseEml } from "../src/eml.js";
 import { applyClears, parseAssignments } from "../src/fields.js";
@@ -198,5 +198,35 @@ describe("relative time", () => {
     assert.equal(relativeTime("2026-10-04T14:00:00Z", now), "in 2 hours");
     assert.equal(relativeTime("2026-11-03T11:59:00", now), "in 30 days");
     assert.equal(relativeTime("2026-10-05T12:00:00Z", now), "in 1 day");
+  });
+});
+
+describe("conflict codes", () => {
+  const body = (detail: string) => ({ detail });
+  it("prefers the X-TourClaim-Error header", () => {
+    assert.equal(conflictCode(new Headers({ "X-TourClaim-Error": "duplicate_booking" }), body("anything")), "duplicate_booking");
+    assert.equal(conflictCode(new Headers({ "X-TourClaim-Error": "Not A Code!" }), body("Intake changed; retry")), "stale_revision");
+  });
+
+  it("reads every server message when the header is absent", () => {
+    const cases: Array<[string, string]> = [
+      ["Idempotency key was already used with different fields", "idempotency_key_reused"],
+      ["This intake belongs to an earlier connection; use a new idempotency key", "idempotency_key_other_connection"],
+      ["Concurrent request; retry with the same idempotency key", "concurrent_request"],
+      ["Submitted intake is read-only", "intake_submitted"],
+      ["A submitted claim cannot be deleted here. See the data deletion instructions to request deletion.", "intake_submitted"],
+      ["Intake changed; retrieve the current revision and try again", "stale_revision"],
+      ["Intake changed; retrieve the current state", "stale_revision"],
+      ["Evidence source was already imported with different contents", "evidence_conflict"],
+      ["Intake is incomplete", "intake_incomplete"],
+      ["The traveler must approve this exact intake revision", "approval_required"],
+      ["Authorization changed; ask the traveler to review again", "approval_outdated"],
+      ["Approval expired; ask the traveler to review again", "approval_outdated"],
+      ["A claim for this booking already exists", "duplicate_booking"],
+      ["Something new", "conflict"],
+    ];
+    for (const [message, code] of cases) assert.equal(conflictCode(new Headers(), body(message)), code, message);
+    const covered = new Set(cases.map(([, code]) => code));
+    for (const code of CONFLICT_CODES) assert.ok(covered.has(code), code);
   });
 });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
+import { CONFLICT_CODES } from "../src/api.js";
 import { INTAKE_FIELDS, MEDICAL_FIELDS } from "../src/fields.js";
 import { COMMANDS } from "../src/main.js";
 import { ATTACHMENT_CONTENT_TYPES, DOC_TYPES, EMAIL_PROVIDERS, INTAKE_STATES, OTHER_INSURANCE, REASON_CATEGORIES } from "../src/types.js";
@@ -26,12 +27,22 @@ describe("package", () => {
     assert.match(pkg.repository.url, /github\.com\/tourclaim\/tourclaim-cli/);
   });
 
+  it("pins every GitHub Action to a commit SHA", () => {
+    for (const name of readdirSync(join(ROOT, ".github", "workflows"))) {
+      const text = readFileSync(join(ROOT, ".github", "workflows", name), "utf8");
+      for (const match of text.matchAll(/uses:\s*(\S+)/g)) {
+        assert.match(match[1] ?? "", /^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/, `${name}: ${match[1]}`);
+      }
+      assert.match(text, /^permissions:\n  contents: read$/m, `${name} sets read-only permissions at the top`);
+    }
+  });
+
   it("starts the built CLI with a node shebang", () => {
     assert.match(readFileSync(join(ROOT, "dist", "cli.js"), "utf8"), /^#!\/usr\/bin\/env node\n/);
   });
 
   it("uses no em dashes in docs or source", () => {
-    const files = ["README.md", "AGENTS.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md"];
+    const files = ["README.md", "AGENTS.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md", "RELEASING.md"];
     for (const dir of ["src", "src/commands", "test"]) {
       for (const name of readdirSync(join(ROOT, dir))) if (name.endsWith(".ts")) files.push(join(dir, name));
     }
@@ -68,9 +79,17 @@ describe("types match openapi/connectors-v1.json", () => {
       "/api/connectors/v1/intakes/{intake_id}/submit",
       "/api/connectors/v1/claims",
       "/api/connectors/v1/claims/{claim_id}",
+      "/api/connectors/v1/key",
     ]) {
       assert.ok(paths.includes(p), p);
     }
+    assert.ok(openapi.paths["/api/connectors/v1/intakes"].get, "GET /intakes (list_claim_drafts)");
+    assert.ok(openapi.paths["/api/connectors/v1/key"].delete, "DELETE /key (disconnect)");
+  });
+
+  it("key info and 409 causes", () => {
+    assert.deepEqual(Object.keys(schemas.KeyResponse.properties).sort(), ["account_email", "expires_at", "id", "scopes"]);
+    for (const code of CONFLICT_CODES) assert.ok(openapi.info.description.includes(code), code);
   });
 });
 

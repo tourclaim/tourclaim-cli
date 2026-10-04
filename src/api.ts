@@ -171,13 +171,56 @@ export function describeErrorBody(status: number, body: unknown): string {
   return `The API answered HTTP ${status}.`;
 }
 
-/** Joins sentences, adding a full stop where one is missing. */
+/**
+ * Joins sentences, adding a full stop between them where one is missing.
+ * The last part is left as given, so a message can end with a command to copy.
+ */
 export function sentences(...parts: Array<string | undefined | null>): string {
-  return parts
-    .map((part) => (part ?? "").trim())
-    .filter(Boolean)
-    .map((part) => (/[.!?:)]$/.test(part) ? part : `${part}.`))
-    .join(" ");
+  const kept = parts.map((part) => (part ?? "").trim()).filter(Boolean);
+  return kept.map((part, i) => (i === kept.length - 1 || /[.!?:)]$/.test(part) ? part : `${part}.`)).join(" ");
+}
+
+/**
+ * Stable causes of a 409, sent by the API in the X-TourClaim-Error header.
+ * They are also used as the error `code` in --json output for exit code 4.
+ */
+export const CONFLICT_CODES = [
+  "idempotency_key_reused",
+  "idempotency_key_other_connection",
+  "concurrent_request",
+  "stale_revision",
+  "intake_submitted",
+  "intake_incomplete",
+  "approval_required",
+  "approval_outdated",
+  "evidence_conflict",
+  "duplicate_booking",
+] as const;
+export type ConflictCode = (typeof CONFLICT_CODES)[number];
+
+// For servers that predate the header: the same causes, read from the message.
+const CONFLICT_MESSAGES: Array<[RegExp, ConflictCode]> = [
+  [/already used with different fields/i, "idempotency_key_reused"],
+  [/earlier connection/i, "idempotency_key_other_connection"],
+  [/concurrent request/i, "concurrent_request"],
+  [/read-only|submitted claim cannot be deleted/i, "intake_submitted"],
+  [/already imported with different contents/i, "evidence_conflict"],
+  [/incomplete|remaining questions/i, "intake_incomplete"],
+  [/authorization changed|approval expired/i, "approval_outdated"],
+  [/must approve/i, "approval_required"],
+  [/already exists/i, "duplicate_booking"],
+  [/intake changed/i, "stale_revision"],
+];
+
+/** The cause of a 409: the X-TourClaim-Error header, else the message, else "conflict". */
+export function conflictCode(headers: Headers | null, body: unknown): string {
+  const header = headers?.get("x-tourclaim-error")?.trim();
+  if (header && /^[a-z0-9_]{1,64}$/.test(header)) return header;
+  const detail = body && typeof body === "object" ? (body as { detail?: unknown }).detail : undefined;
+  if (typeof detail === "string") {
+    for (const [pattern, code] of CONFLICT_MESSAGES) if (pattern.test(detail)) return code;
+  }
+  return "conflict";
 }
 
 export function toApiError(status: number, body: unknown, headers: Headers): ApiError {
@@ -191,21 +234,21 @@ export function toApiError(status: number, body: unknown, headers: Headers): Api
     case 401:
       return new ApiError(status, sentences(message, "The key is missing, expired or revoked. Run: tourclaim login"), ExitCode.AUTH, "unauthorized", json);
     case 403:
-      return new ApiError(status, sentences(message, "This key was not granted permission for this action. Run tourclaim login --force to connect again with the permission it needs"), ExitCode.AUTH, "forbidden", json);
+      return new ApiError(status, sentences(message, "This key was not granted permission for this action. To connect again with the permission it needs, run: tourclaim login --force"), ExitCode.AUTH, "forbidden", json);
     case 404:
       return new ApiError(status, message, ExitCode.NOT_FOUND, "not_found", json);
     case 409:
-      return new ApiError(status, message, ExitCode.CONFLICT, "conflict", json);
+      return new ApiError(status, message, ExitCode.CONFLICT, conflictCode(headers, json), json);
     case 413:
-      return new ApiError(status, sentences(message, "The request was too large; files may be at most 5 MiB"), ExitCode.ERROR, "too_large", json);
+      return new ApiError(status, sentences(message, "The request was too large; files may be at most 5 MiB."), ExitCode.ERROR, "too_large", json);
     case 422:
       return new ApiError(status, message, ExitCode.ERROR, "invalid", json);
     case 429: {
       const retryAfter = retryAfterSeconds(headers.get("retry-after"));
-      return new ApiError(status, sentences(message, `Try again in ${retryAfter} seconds`), ExitCode.RATE_LIMITED, "rate_limited", json, { retry_after: retryAfter });
+      return new ApiError(status, sentences(message, `Try again in ${retryAfter} seconds.`), ExitCode.RATE_LIMITED, "rate_limited", json, { retry_after: retryAfter });
     }
     case 503:
-      return new ApiError(status, sentences(message, "The TourClaim connector is unavailable right now; nothing was changed. Try again later"), ExitCode.UNAVAILABLE, "unavailable", json);
+      return new ApiError(status, sentences(message, "The TourClaim connector is unavailable right now; nothing was changed. Try again later."), ExitCode.UNAVAILABLE, "unavailable", json);
     default:
       return new ApiError(status, message, ExitCode.ERROR, "api_error", json);
   }

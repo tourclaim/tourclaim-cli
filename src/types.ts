@@ -1,11 +1,11 @@
 /**
  * Types for the TourClaim connector API.
  *
- * Written by hand from openapi/connectors-v1.json (the live schema served at
- * /api/connectors/v1/openapi.json). test/schema.test.ts checks that the field
- * tables in fields.ts still match that file. The device authorization and key
- * endpoints are not in that schema yet; their shapes follow the contract in
- * README.md.
+ * Written by hand from openapi/connectors-v1.json (the schema served at
+ * /api/connectors/v1/openapi.json). test/meta.test.ts checks that the field
+ * tables in fields.ts and the enums here still match that file. The device
+ * authorization endpoints (/api/connectors/device/*) are not part of that
+ * schema; their shapes follow RFC 8628 as described in README.md.
  */
 
 export type Mode = "review" | "live";
@@ -144,7 +144,7 @@ export interface AttachmentEvidence {
   user_authorized_sharing: boolean;
 }
 
-/** GET /api/connectors/v1 (no auth). URLs are relative to the API origin. */
+/** GET /api/connectors/v1 (no auth). URLs are absolute; older servers sent them relative to the API origin. */
 export interface ConnectorInfo {
   name: string;
   version: string;
@@ -152,16 +152,18 @@ export interface ConnectorInfo {
   mode: Mode;
   openapi_url: string;
   connection_url: string;
+  /** Where the traveler approves a tourclaim login code. */
+  cli_login_url?: string;
   documentation_url: string;
 }
 
-/** GET /api/connectors/v1/key */
+/** GET /api/connectors/v1/key (KeyResponse) */
 export interface KeyInfo {
   id: string;
   expires_at: string;
   scopes: string[];
   /** The traveler account the key belongs to. */
-  account_email?: string | null;
+  account_email: string;
 }
 
 /** POST /api/connectors/device/code */

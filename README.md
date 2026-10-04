@@ -86,7 +86,7 @@ tourclaim login --with-token [--force] < key.txt
 Signs in with a device code: the tool prints a URL and a code such as `WDJB-MJHT`, opens the URL in the browser when run in a terminal (not with `--no-browser`), and waits while the traveler approves in their own browser. It polls at the interval the API asks for, slows down when told to, and gives up when the code expires. It then saves the key and prints the account and expiry: `Signed in as pat@example.com (key expires 2026-11-03 18:00 UTC, in 30 days).`
 
 - `--scope` asks for fewer permissions: any of `intakes:write`, `evidence:write`, `claims:submit`, `claims:read` (repeat the flag or separate with commas). The default is all four.
-- If a valid key is already stored for the API URL, `login` reports it and exits 0 without starting a new sign-in. `--force` replaces it and revokes the old key; drafts started with the old key can no longer be reached.
+- If a valid key is already stored for the API URL, `login` reports it and exits 0 without starting a new sign-in. `--force` gets a new key and revokes the old one, since a traveler can hold at most 5 keys. Drafts are not lost: see [Which drafts a key can reach](#which-drafts-a-key-can-reach).
 - `--with-token` saves a key the traveler already created at `https://app.getcopernican.com/connect/muse`. It reads the key from stdin when piped, or from a hidden prompt on a terminal, and checks it with the API before saving. A key is never accepted as a command-line argument.
 - With `--json`, the first line is `{"event":"device_code","user_code":...,"verification_uri":...,"verification_uri_complete":...,"expires_in":...,"interval":...}` so an agent can show it to its human; the last line is `{"event":"signed_in",...}`.
 
@@ -108,7 +108,11 @@ Searches the card catalog by product name (at most 100 characters, at most 30 ma
 tourclaim intake start [--set <field>=<value>]... [--fields-file <file>] [--idempotency-key <key>]
 ```
 
-Starts a draft. Every field is optional at this point; the output lists what is missing and up to three questions to ask next. The command sends a random `Idempotency-Key` unless you give one. If it fails or times out, run it again with the same `--idempotency-key` and the same fields to get the same draft rather than a second one; the error message includes the key it used.
+Starts a draft. Every field is optional at this point; the output lists what is missing and up to three questions to ask next. Run `tourclaim intake list` first: the traveler may already have a draft for the same trip. The command sends a random `Idempotency-Key` unless you give one. If it fails or times out, run it again with the same `--idempotency-key` and the same fields to get the same draft rather than a second one; the error message includes the key it used.
+
+### `tourclaim intake list [--offset <n>]`
+
+Lists the traveler's drafts that were never submitted, most recently changed first, 30 at a time, with each one's state, merchant, booking reference and how many answers are missing. Use it to pick up a draft whose id was lost. Submitted drafts are claims; see `tourclaim claims list`.
 
 ### `tourclaim intake show <id>`
 
@@ -177,7 +181,7 @@ Only the traveler can sign, in their own browser. When the draft is complete, th
 
 ### `tourclaim intake submit <id>`
 
-Submits a signed draft as a claim and prints the claim. Safe to retry: a repeated call returns the same claim. Exits 4 when the traveler has not signed the current revision, the signature is older than 7 days, the draft is incomplete, or the booking already has a claim. Submitting does not file anything with an insurer, charge a fee or promise reimbursement; Copernican reviews the claim next.
+Submits a signed draft as a claim and prints the claim. Safe to retry: a repeated call returns the same claim. Exits 4 when the traveler has not signed the current revision (`approval_required`), the signature is out of date (`approval_outdated`), the draft is incomplete (`intake_incomplete`), or the booking already has a claim (`duplicate_booking`). Submitting does not file anything with an insurer, charge a fee or promise reimbursement; Copernican reviews the claim next.
 
 ### `tourclaim intake delete <id>`
 
@@ -211,7 +215,7 @@ With `--json`:
 - **stdout** carries one JSON value per line. For `cards search`, `intake start|show|set|attach|add-email|submit` and `claims list|show`, it is the API's own response object, unchanged. For `intake sign` without `--wait`, it is the draft.
 - **Commands that wait** print an event line first and the result last: `login` prints `{"event":"device_code",...}` then `{"event":"signed_in",...}`; `intake sign --wait` prints `{"event":"waiting_for_signature","intake_id","review_url","timeout_seconds"}` then the draft. The last line is always the result.
 - **`status`** prints `{"api_url","mode","enabled","connector":{...},"signed_in","account_email","key":{"id","expires_at","scopes"},"key_source","key_problem","credentials_path"}`. **`logout`** prints `{"api_url","revoked","already_invalid","credential_removed","key_source"}`. **`intake delete`** prints `{"id","deleted":true}`.
-- **Errors** go to stderr as one line, `{"error":{"code","message","exit_code",...}}`, with `status`, `detail` (the API's validation list), `retry_after`, `idempotency_key`, `review_url`, `current_revision` or `missing_fields` when they apply. Codes include `usage_error`, `not_signed_in`, `unauthorized`, `forbidden`, `not_found`, `conflict`, `not_signed`, `incomplete`, `invalid`, `too_large`, `rate_limited`, `unavailable`, `access_denied`, `expired_token`, `timeout`, `network_error`, `unsupported_file`, `cancelled`.
+- **Errors** go to stderr as one line, `{"error":{"code","message","exit_code",...}}`, with `status`, `detail` (the API's validation list), `retry_after`, `idempotency_key`, `review_url`, `current_revision`, `state` or `missing_fields` when they apply. Codes include `usage_error`, `not_signed_in`, `unauthorized`, `forbidden`, `not_found`, `invalid`, `too_large`, `rate_limited`, `unavailable`, `access_denied`, `expired_token`, `timeout`, `network_error`, `unsupported_file`, `cancelled`, and for exit code 4 one of the [conflict causes](#conflict-causes).
 - **Progress and warnings** go to stderr as plain text in both modes.
 
 ## Exit codes
@@ -222,17 +226,41 @@ With `--json`:
 | 1 | Error: invalid values (422), unreadable or unsupported file, network failure, timeout, declined prompt. |
 | 2 | Usage: bad flags or arguments, or a confirmation was needed and there was no terminal (pass `--yes` only with the traveler's agreement). |
 | 3 | Not signed in, or the key was rejected (401) or lacks permission (403). Also a declined or expired sign-in. Run `tourclaim login`. |
-| 4 | Conflict (409): the draft changed, is not signed, is incomplete, is already submitted, or the booking already has a claim. |
+| 4 | Conflict (409). The JSON error `code` says which; see [Conflict causes](#conflict-causes). |
 | 5 | Rate limited (429) after one automatic retry. The tool waits `Retry-After` (up to 60 seconds) and retries once by itself. |
 | 6 | Not found (404). |
 | 7 | The connector is disabled or unavailable (503). |
+
+## Conflict causes
+
+Exit code 4 means the API refused a change because of the draft's state. The API names the cause in its `X-TourClaim-Error` header, and the tool uses it as the JSON error `code`. The tool also uses these codes when it refuses before calling the API (for example, submitting a draft that is not signed). It never retries a conflict on its own.
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| `idempotency_key_reused` | This `--idempotency-key` was used with different fields. | Leave the key out (or use a new one) to start a different draft. |
+| `idempotency_key_other_connection` | The key was used by another connection. | Use a new key. |
+| `concurrent_request` | The same request ran twice at once. | Run it again with the same `--idempotency-key`. |
+| `stale_revision` | The draft changed since it was read. Nothing was saved. | `tourclaim intake show`, then run the command again. |
+| `intake_submitted` | The draft was submitted and is read-only. | `tourclaim claims list`. |
+| `intake_incomplete` | Answers are missing. | `tourclaim intake set`. |
+| `approval_required` | The traveler has not signed this revision. | `tourclaim intake sign <id> --wait`. |
+| `approval_outdated` | The signature is out of date. | The traveler signs again: `tourclaim intake sign <id> --wait`. |
+| `evidence_conflict` | The same email or file was already added with different details. | Nothing to do, or add it under its original details. |
+| `duplicate_booking` | This booking already has a claim. | `tourclaim claims list`. |
+
+## Which drafts a key can reach
+
+- A key from `tourclaim login` reaches every unsubmitted draft started from any `tourclaim login` on the same account, including drafts started with keys that have since expired or been revoked. Signing in again, `login --force` and `logout` do not lose drafts.
+- Drafts started by other apps connected to the account, such as Muse, are not visible to the tool, and those apps do not see the tool's drafts.
+- A key saved with `login --with-token` (created at `/connect/muse`) reaches only the drafts it started itself.
+- Submitted claims are claims on the account: `tourclaim claims list` shows them all, including claims submitted through other apps such as Muse.
 
 ## Configuration
 
 | Variable | Meaning |
 | --- | --- |
 | `TOURCLAIM_API_URL` | API base URL. `--api-url` overrides it. Plain `http://` is accepted only for localhost. |
-| `TOURCLAIM_API_KEY` | A key to use instead of the stored one. It takes precedence over the stored key. |
+| `TOURCLAIM_API_KEY` | A key to use instead of the stored one. It takes precedence over the stored key. A key from `/connect/muse` reaches only the drafts it started. |
 | `XDG_CONFIG_HOME` | Credentials are stored in `$XDG_CONFIG_HOME/tourclaim/credentials.json` (default `~/.config/tourclaim/credentials.json`; `%APPDATA%\tourclaim\credentials.json` on Windows). |
 
 The credentials file maps each API base URL to `{"api_key","expires_at","grant_id","scopes"}`, so staging and production keys never mix. The tool warns when the stored key expires within 3 days.
@@ -240,7 +268,7 @@ The credentials file maps each API base URL to `{"api_key","expires_at","grant_i
 ## Security
 
 - **Keys belong to one traveler.** A key lasts 30 days and cannot be refreshed; a traveler can have at most 5 active keys. Sign in again when it expires. The traveler can revoke keys at any time at `https://app.getcopernican.com/connect/muse`, and `tourclaim logout` revokes the one in use.
-- **Drafts belong to the key that created them.** Another key, even the same traveler's, gets "not found". After signing in again, drafts started with the earlier key cannot be reached; submitted claims stay listed under `tourclaim claims list`. Submit drafts before the key expires, and keep the draft id.
+- **Drafts stay with the account's CLI sign-ins.** Drafts started from `tourclaim login` stay reachable after signing in again; drafts started by other apps (such as Muse) are not visible to the tool. See [Which drafts a key can reach](#which-drafts-a-key-can-reach).
 - **Stored with tight permissions.** The credentials file is written with mode 0600 inside a 0700 directory, and the tool warns if it finds the file readable by others. On Windows it lives in your user profile and relies on its permissions.
 - **Never on the command line.** Keys are never accepted as arguments, where shell history and process lists would keep them. Use `tourclaim login`, pipe a key to `tourclaim login --with-token`, or set `TOURCLAIM_API_KEY` from a secret store.
 - **Never printed.** No command prints the key, in human or JSON output; anything shaped like a key is redacted from output.
@@ -253,7 +281,7 @@ To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Development
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). `npm test` builds the tool and runs the tests against an in-process mock of the API; `npm run mock` starts that mock for trying the tool by hand.
+See [CONTRIBUTING.md](CONTRIBUTING.md). `npm test` builds the tool and runs the tests against an in-process mock of the API; `npm run mock` starts that mock for trying the tool by hand. Releases are described in [RELEASING.md](RELEASING.md).
 
 ## License
 
