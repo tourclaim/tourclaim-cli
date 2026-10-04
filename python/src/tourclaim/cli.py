@@ -492,8 +492,10 @@ def _report_login(
     credential: StoredCredential,
     replaced_key_id: Optional[str],
     already: bool,
-    replaced_already_gone: bool = False,
+    previous_key: Optional[str] = None,
 ) -> None:
+    """``previous_key`` says what happened to a replaced key: "retired" by the
+    server, "revoked" by this tool, or "still_active"."""
     expires_at = (info or {}).get("expires_at") or credential.expires_at
     scopes = (info or {}).get("scopes") if info else credential.scopes
     scopes = scopes if isinstance(scopes, list) else []
@@ -514,6 +516,7 @@ def _report_login(
                 "mode": mode,
                 "credentials_path": ctx.store.path,
                 "replaced_key_id": replaced_key_id,
+                "previous_key_active": (previous_key == "still_active") if replaced_key_id else None,
             }
         )
         ctx.out.data(result)
@@ -525,11 +528,14 @@ def _report_login(
         ctx.out.line(f"Permissions: {', '.join(scopes)}")
     if not already:
         ctx.out.line(f"Key saved to {ctx.store.path} (readable only by you).")
-    if replaced_key_id:
-        ctx.out.line(
-            f"The previous key {replaced_key_id} had already stopped working."
-            if replaced_already_gone
-            else f"Revoked the previous key {replaced_key_id}."
+    if replaced_key_id and previous_key == "retired":
+        ctx.out.line(f"The server retired the previous key {replaced_key_id}.")
+    if replaced_key_id and previous_key == "revoked":
+        ctx.out.line(f"Revoked the previous key {replaced_key_id}.")
+    if replaced_key_id and previous_key == "still_active":
+        ctx.out.warn(
+            f"The previous key {replaced_key_id} still works: it was not made by tourclaim login for this account "
+            f"(for example, a key saved with --with-token). Revoke it at {_manage_keys_url(ctx)} if it is no longer needed."
         )
     notice = mode_notice(mode)
     if notice:
@@ -538,7 +544,7 @@ def _report_login(
         ctx.out.line("To replace this key, run: tourclaim login --force")
 
 
-def _device_flow(ctx: Context, scopes: List[str], no_browser: bool) -> Dict[str, Any]:
+def _device_flow(ctx: Context, scopes: List[str], no_browser: bool, replacing: Optional[str]) -> Dict[str, Any]:
     api = ctx.client()
     code = api.request_device_code(scopes or None, client_name=ctx.user_agent)
     # The code is typed by the traveler, never carried in a link: a link with
@@ -563,7 +569,7 @@ def _device_flow(ctx: Context, scopes: List[str], no_browser: bool) -> Dict[str,
                 "",
                 f"Enter this code on that page: {code['user_code']}",
                 "",
-                "Type the code yourself. Only approve if you started this sign-in in this terminal.",
+                "Only continue if you, or an assistant you are using right now, ran tourclaim login and the page shows this same code.",
             ]
         )
     opened = False
@@ -573,7 +579,7 @@ def _device_flow(ctx: Context, scopes: List[str], no_browser: bool) -> Dict[str,
         ctx.out.line("Opened the page in your browser." if opened else "")
     minutes = max(1, int(code["expires_in"] / 60 + 0.5))
     ctx.out.info(f"Waiting for approval (the code expires in {minutes} minute{'' if minutes == 1 else 's'}). Press Ctrl-C to cancel.")
-    return dict(api.wait_for_device_token(code, sleep=ctx.deps.sleep, now=ctx.deps.now))
+    return dict(api.wait_for_device_token(code, sleep=ctx.deps.sleep, now=ctx.deps.now, replacing=replacing))
 
 
 def _read_key(ctx: Context) -> str:
@@ -633,7 +639,8 @@ def run_login(ctx: Context, args: Args) -> int:
         info = confirmed[0]
         credential = StoredCredential(key, info.get("expires_at"), info.get("id"), list(info.get("scopes") or []))
     else:
-        token = _device_flow(ctx, scopes, args.flag("no-browser"))
+        # Any stored key is sent along, so the server retires it when it mints the new one.
+        token = _device_flow(ctx, scopes, args.flag("no-browser"), existing.api_key if existing else None)
         ctx.out.add_secret(token["api_key"])
         credential = StoredCredential(token["api_key"], token.get("expires_at"), token.get("grant_id"), list(token.get("scopes") or []))
 
@@ -641,17 +648,25 @@ def run_login(ctx: Context, args: Args) -> int:
     ctx.forget_active_key()
 
     replaced_key_id = None
-    replaced_already_gone = False
+    previous_key: Optional[str] = None
     if existing and existing_check and existing.api_key != credential.api_key:
-        try:
-            ctx.client(existing.api_key).disconnect()
-            replaced_key_id = existing_check[0].get("id")
-        except AuthenticationError:
-            # At the key limit the server retires the oldest tourclaim login key itself.
-            replaced_key_id = existing_check[0].get("id")
-            replaced_already_gone = True
-        except TourClaimError as error:
-            ctx.out.warn(f"Could not revoke the previous key ({error.message}). Revoke it at {_manage_keys_url(ctx)}")
+        replaced_key_id = existing_check[0].get("id")
+        if with_token:
+            # A pasted key does not go through the sign-in, so nothing retired the old one: revoke it here.
+            try:
+                ctx.client(existing.api_key).disconnect()
+                previous_key = "revoked"
+            except AuthenticationError:
+                previous_key = "revoked"
+            except TourClaimError as error:
+                ctx.out.warn(f"Could not revoke the previous key ({error.message}). Revoke it at {_manage_keys_url(ctx)}")
+        else:
+            # The server retired it while minting the new key if it was this traveler's
+            # tourclaim login key. Check, so a key it kept is not left behind unnoticed.
+            try:
+                previous_key = "still_active" if _key_info(ctx, existing.api_key) else "retired"
+            except TourClaimError:
+                previous_key = None
 
     if not confirmed:
         try:
@@ -659,7 +674,7 @@ def run_login(ctx: Context, args: Args) -> int:
         except TourClaimError as error:
             ctx.out.warn(f"Saved the key, but could not confirm it: {error.message}")
     _report_login(
-        ctx, confirmed[0] if confirmed else None, confirmed[1] if confirmed else None, credential, replaced_key_id, False, replaced_already_gone
+        ctx, confirmed[0] if confirmed else None, confirmed[1] if confirmed else None, credential, replaced_key_id, False, previous_key
     )
     return ExitCode.OK
 
@@ -1327,7 +1342,7 @@ COMMANDS: List[Command] = [
             ),
             "force": Option(
                 "boolean",
-                "Replace a valid stored key with a new one and revoke the old key (a traveler can hold at most 5). Drafts stay reachable.",
+                "Replace a valid stored key with a new one; the server retires the old key. Drafts stay reachable.",
             ),
         },
         examples=["tourclaim login", "tourclaim login --json --no-browser", "tourclaim login --with-token < key.txt"],

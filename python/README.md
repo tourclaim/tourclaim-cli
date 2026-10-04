@@ -192,7 +192,7 @@ The credentials file maps each API base URL to `{"api_key","expires_at","grant_i
 
 - **Keys belong to one traveler.** A key lasts 30 days and cannot be refreshed; a traveler can have at most 5 connections, and a new `tourclaim login` past that retires the account's oldest `tourclaim login` key (never another app's). Keys from `tourclaim login` reach the drafts started by any `tourclaim login` on the same account, so signing in again does not lose a draft. The traveler can revoke keys at `https://app.getcopernican.com/connect/muse`, and `tourclaim logout` revokes the one in use.
 - **Stored with tight permissions.** The credentials file is written with mode 0600 inside a 0700 directory, and the tool warns if it is readable by others. On Windows it lives in your user profile and relies on its permissions.
-- **The code is typed, never linked.** The traveler types the code shown in the terminal on the sign-in page; there is no link with the code in it.
+- **The code is typed, never linked.** The traveler types the code shown in the terminal (or relayed by an assistant they are using right now) on the sign-in page; there is no link with the code in it. A sign-in that replaces a stored key sends that key along, and the server retires it as it issues the new one.
 - **Never on the command line, never printed.** Keys are not accepted as arguments, and anything shaped like a key is redacted from output. `repr(Client(...))` does not show the key.
 - **Only https.** Keys are only sent over https, except to localhost for testing. Redirects are not followed.
 - **A person signs.** Only the traveler can sign the claim authorization, in their own browser at the review link. Neither the command line nor the library can sign.

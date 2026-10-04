@@ -194,6 +194,7 @@ class MockServer:
         no_conflict_header: bool = False,
         relative_discovery: bool = False,
         send_complete_uri: bool = False,
+        reject_bad_bearer: bool = False,
         traveler: str = "pat@example.com",
     ) -> None:
         self.enabled = enabled
@@ -207,6 +208,8 @@ class MockServer:
         self.relative_discovery = relative_discovery
         #: Behave like a server from before the security review: also send verification_uri_complete.
         self.send_complete_uri = send_complete_uri
+        #: Answer 401 to a token poll whose bearer key is not a live key (the contract allows ignoring it instead).
+        self.reject_bad_bearer = reject_bad_bearer
         self.traveler = traveler
         #: The traveler who approves new sign-ins (default: traveler).
         self.device_traveler: Optional[str] = None
@@ -397,7 +400,7 @@ class MockServer:
         if path == "/api/connectors/device/code" and method == "POST":
             return self._device_code(r.body)
         if path == "/api/connectors/device/token" and method == "POST":
-            return self._device_token(r.body)
+            return self._device_token(r.body, r.headers.get("authorization"))
 
         key = self._authenticate(r)
         v1 = path[len("/api/connectors/v1"):]
@@ -515,7 +518,7 @@ class MockServer:
             response["verification_uri_complete"] = f"{page}?code={record.user_code}"
         return response
 
-    def _device_token(self, body: Any) -> Any:
+    def _device_token(self, body: Any, authorization: Optional[str] = None) -> Any:
         b = body if isinstance(body, dict) else {}
         if not isinstance(b.get("device_code"), str):
             raise HttpError(400, {"error": "invalid_request"})
@@ -531,7 +534,9 @@ class MockServer:
             raise HttpError(400, {"error": "expired_token"})
         if scripted == "approve" and d:
             d.status = "approved"
-        if not d or d.status == "consumed" or time.time() > d.created_at + d.expires_in:
+        # An approved code stays collectable for 60 seconds past its expiry.
+        lifetime = (d.expires_in + (60 if d.status == "approved" else 0)) if d else 0
+        if not d or d.status == "consumed" or time.time() > d.created_at + lifetime:
             raise HttpError(400, {"error": "expired_token"})
         now = time.time()
         if self.enforce_device_interval and d.last_poll is not None and now - d.last_poll < d.interval - 0.05:
@@ -546,9 +551,17 @@ class MockServer:
             raise HttpError(400, {"error": "access_denied", "error_description": d.description or "Declined."})
         if d.status == "pending":
             raise HttpError(400, {"error": "authorization_pending"})
+        # A poll may carry the key this sign-in replaces. If it is a live CLI key of
+        # the same traveler, it is retired as the new one is minted; otherwise it is ignored.
+        now_dt = datetime.now(timezone.utc)
+        m = re.fullmatch(r"Bearer (.+)", authorization or "")
+        old = self.keys.get(m.group(1)) if m else None
+        if m and self.reject_bad_bearer and (not old or old.revoked or old.expires_at <= now_dt):
+            raise fail(401, "Muse connection expired or disconnected", {"WWW-Authenticate": "Bearer"})
+        if old and old.channel == "cli" and old.traveler == d.traveler and not old.revoked and old.expires_at > now_dt:
+            old.revoked = True
         # At the limit of five connections, retire the traveler's oldest CLI key;
         # keys made for other apps are never touched.
-        now_dt = datetime.now(timezone.utc)
         active = [k for k in self.keys.values() if k.traveler == d.traveler and not k.revoked and k.expires_at > now_dt]
         if len(active) >= 5:
             cli_keys = sorted((k for k in active if k.channel == "cli"), key=lambda k: k.seq)

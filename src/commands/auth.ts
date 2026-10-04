@@ -60,8 +60,8 @@ interface SignedIn {
   mode: string | null;
   credential: StoredCredential;
   replacedKeyId: string | null;
-  /** The previous key no longer worked when it was replaced (expired, or retired by the server at the key limit). */
-  replacedAlreadyGone?: boolean;
+  /** How the replaced key was dealt with: retired by the server, revoked by this tool, or still working. */
+  previousKey?: "retired" | "revoked" | "still_active" | null;
   already: boolean;
 }
 
@@ -81,6 +81,7 @@ function report(ctx: Context, result: SignedIn): void {
       mode: result.mode,
       credentials_path: ctx.store.path,
       replaced_key_id: result.replacedKeyId,
+      previous_key_active: result.replacedKeyId ? result.previousKey === "still_active" : null,
     });
     return;
   }
@@ -89,11 +90,11 @@ function report(ctx: Context, result: SignedIn): void {
   ctx.out.line(result.already ? `Already signed in${who} (${expiry}).` : `Signed in${who} (${expiry}).`);
   if (scopes.length) ctx.out.line(`Permissions: ${scopes.join(", ")}`);
   if (!result.already) ctx.out.line(`Key saved to ${ctx.store.path} (readable only by you).`);
-  if (result.replacedKeyId) {
-    ctx.out.line(
-      result.replacedAlreadyGone
-        ? `The previous key ${result.replacedKeyId} had already stopped working.`
-        : `Revoked the previous key ${result.replacedKeyId}.`,
+  if (result.replacedKeyId && result.previousKey === "retired") ctx.out.line(`The server retired the previous key ${result.replacedKeyId}.`);
+  if (result.replacedKeyId && result.previousKey === "revoked") ctx.out.line(`Revoked the previous key ${result.replacedKeyId}.`);
+  if (result.replacedKeyId && result.previousKey === "still_active") {
+    ctx.out.warn(
+      `The previous key ${result.replacedKeyId} still works: it was not made by tourclaim login for this account (for example, a key saved with --with-token). Revoke it at ${manageKeysUrl(ctx)} if it is no longer needed.`,
     );
   }
   const notice = modeNotice(result.mode);
@@ -101,28 +102,46 @@ function report(ctx: Context, result: SignedIn): void {
   if (result.already) ctx.out.line("To replace this key, run: tourclaim login --force");
 }
 
-async function pollForToken(ctx: Context, api: ApiClient, code: DeviceCodeResponse): Promise<DeviceTokenSuccess> {
+/**
+ * Polls until the traveler decides. Sleeps the interval the API asks for, but
+ * never past the code's expiry; the poll made at or after expiry is the last
+ * one, because the server keeps an approved code alive a little longer, so an
+ * approval in the final seconds still yields a key.
+ *
+ * `replacing` is the key this sign-in replaces. It is sent with each poll so
+ * the server retires it when it mints the new one.
+ */
+async function pollForToken(ctx: Context, api: ApiClient, code: DeviceCodeResponse, replacing: string | null): Promise<DeviceTokenSuccess> {
   let interval = Math.max(1, Number(code.interval) || 5);
   const deadline = ctx.deps.now() + code.expires_in * 1000;
   let failures = 0;
+  let bearer = replacing;
+  const expired = () =>
+    new CliError("The sign-in code expired before it was approved. Run tourclaim login again.", ExitCode.AUTH, "expired_token");
+  const poll = (withKey: string | null) =>
+    api.request<DeviceTokenSuccess | DeviceTokenError>(DEVICE_TOKEN_PATH, {
+      method: "POST",
+      body: { device_code: code.device_code },
+      auth: false,
+      ...(withKey ? { headers: { Authorization: `Bearer ${withKey}` } } : {}),
+      allowStatus: [400, 401, 429],
+      retryRateLimit: false,
+    });
   for (;;) {
-    if (ctx.deps.now() + interval * 1000 > deadline) {
-      throw new CliError("The sign-in code expired before it was approved. Run tourclaim login again.", ExitCode.AUTH, "expired_token");
-    }
-    await ctx.deps.sleep(interval * 1000);
+    await ctx.deps.sleep(Math.max(0, Math.min(interval * 1000, deadline - ctx.deps.now())));
+    const final = ctx.deps.now() >= deadline;
     let res;
     try {
-      res = await api.request<DeviceTokenSuccess | DeviceTokenError>(DEVICE_TOKEN_PATH, {
-        method: "POST",
-        body: { device_code: code.device_code },
-        auth: false,
-        allowStatus: [400, 429],
-        retryRateLimit: false,
-      });
+      res = await poll(bearer);
+      if (res.status === 401 && bearer) {
+        // The key being replaced was not accepted; sign in without it.
+        bearer = null;
+        res = await poll(null);
+      }
       failures = 0;
     } catch (error) {
       const transient = error instanceof CliError && (error.code === "network_error" || error.code === "timeout");
-      if (transient && ++failures < MAX_POLL_FAILURES) {
+      if (transient && !final && ++failures < MAX_POLL_FAILURES) {
         interval = Math.min(interval * 2, 60);
         continue;
       }
@@ -130,14 +149,17 @@ async function pollForToken(ctx: Context, api: ApiClient, code: DeviceCodeRespon
     }
     if (res.status === 200) return res.data as DeviceTokenSuccess;
     if (res.status === 429) {
+      if (final) throw expired();
       interval += 5;
       continue;
     }
     const err = (res.data ?? {}) as DeviceTokenError;
     switch (err.error) {
       case "authorization_pending":
+        if (final) throw expired();
         continue;
       case "slow_down":
+        if (final) throw expired();
         interval += 5;
         continue;
       case "access_denied":
@@ -158,7 +180,7 @@ async function pollForToken(ctx: Context, api: ApiClient, code: DeviceCodeRespon
   }
 }
 
-async function deviceFlow(ctx: Context, scopes: string[], noBrowser: boolean): Promise<DeviceTokenSuccess> {
+async function deviceFlow(ctx: Context, scopes: string[], noBrowser: boolean, replacing: string | null): Promise<DeviceTokenSuccess> {
   const api = ctx.client();
   const body: { client: string; scopes?: string[] } = { client: ctx.userAgent };
   if (scopes.length) body.scopes = scopes;
@@ -192,7 +214,7 @@ async function deviceFlow(ctx: Context, scopes: string[], noBrowser: boolean): P
       "",
       `Enter this code on that page: ${code.user_code}`,
       "",
-      "Type the code yourself. Only approve if you started this sign-in in this terminal.",
+      "Only continue if you, or an assistant you are using right now, ran tourclaim login and the page shows this same code.",
     ]);
   }
   let opened = false;
@@ -200,7 +222,7 @@ async function deviceFlow(ctx: Context, scopes: string[], noBrowser: boolean): P
   if (!ctx.json) ctx.out.line(opened ? "Opened the page in your browser." : "");
   const minutes = Math.max(1, Math.round(code.expires_in / 60));
   ctx.out.info(`Waiting for approval (the code expires in ${minutes} minute${minutes === 1 ? "" : "s"}). Press Ctrl-C to cancel.`);
-  return pollForToken(ctx, api, code);
+  return pollForToken(ctx, api, code, replacing);
 }
 
 async function readKey(ctx: Context): Promise<string> {
@@ -240,7 +262,7 @@ export const login: Command = {
     },
     force: {
       type: "boolean",
-      description: "Replace a valid stored key with a new one and revoke the old key. Drafts stay reachable.",
+      description: "Replace a valid stored key with a new one; the server retires the old key. Drafts stay reachable.",
     },
   },
   examples: ["tourclaim login", "tourclaim login --json --no-browser", "tourclaim login --with-token < key.txt"],
@@ -281,7 +303,8 @@ export const login: Command = {
       }
       credential = { api_key: key, expires_at: confirmed.info.expires_at, grant_id: confirmed.info.id, scopes: confirmed.info.scopes };
     } else {
-      const token = await deviceFlow(ctx, scopes, flag(args, "no-browser"));
+      // Any stored key is sent along, so the server retires it when it mints the new one.
+      const token = await deviceFlow(ctx, scopes, flag(args, "no-browser"), existing?.api_key ?? null);
       if (typeof token.api_key !== "string" || !KEY_FORMAT.test(token.api_key)) {
         throw new CliError("The API returned a key in an unexpected format. Nothing was saved.", ExitCode.ERROR, "bad_response");
       }
@@ -298,18 +321,25 @@ export const login: Command = {
     ctx.forgetActiveKey();
 
     let replacedKeyId: string | null = null;
-    let replacedAlreadyGone = false;
+    let previousKey: SignedIn["previousKey"] = null;
     if (existing && existingCheck && existing.api_key !== credential.api_key) {
-      try {
-        await ctx.client(existing.api_key).request(KEY_PATH, { method: "DELETE" });
-        replacedKeyId = existingCheck.info.id;
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          // At the key limit the server retires the oldest tourclaim login key itself.
-          replacedKeyId = existingCheck.info.id;
-          replacedAlreadyGone = true;
-        } else {
-          ctx.out.warn(`Could not revoke the previous key (${(error as Error).message}). Revoke it at ${manageKeysUrl(ctx)}`);
+      replacedKeyId = existingCheck.info.id;
+      if (withToken) {
+        // A pasted key does not go through the sign-in, so nothing retired the old one: revoke it here.
+        try {
+          await ctx.client(existing.api_key).request(KEY_PATH, { method: "DELETE" });
+          previousKey = "revoked";
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 401) previousKey = "revoked";
+          else ctx.out.warn(`Could not revoke the previous key (${(error as Error).message}). Revoke it at ${manageKeysUrl(ctx)}`);
+        }
+      } else {
+        // The server retired it while minting the new key if it was this traveler's
+        // tourclaim login key. Check, so a key it kept is not left behind unnoticed.
+        try {
+          previousKey = (await keyInfo(ctx, existing.api_key)) ? "still_active" : "retired";
+        } catch {
+          previousKey = null;
         }
       }
     }
@@ -321,7 +351,7 @@ export const login: Command = {
         ctx.out.warn(`Saved the key, but could not confirm it: ${(error as Error).message}`);
       }
     }
-    report(ctx, { info: confirmed?.info ?? null, mode: confirmed?.mode ?? null, credential, replacedKeyId, replacedAlreadyGone, already: false });
+    report(ctx, { info: confirmed?.info ?? null, mode: confirmed?.mode ?? null, credential, replacedKeyId, previousKey, already: false });
     return ExitCode.OK;
   },
 };

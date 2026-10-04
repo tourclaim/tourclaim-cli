@@ -116,17 +116,42 @@ describe("login (device flow)", () => {
     assert.match(r.stderr, /expired or was already used/);
   });
 
-  it("stops polling at expires_in", async () => {
+  it("stops at expires_in after one final poll at the deadline", async () => {
     const short = new MockServer({ deviceInterval: 5, deviceExpiresIn: 12 });
     await short.start();
     try {
       const r = await runCli(["login"], { home, apiUrl: short.url });
       assert.equal(r.code, 3);
-      assert.deepEqual(r.sleeps, [5000, 5000]);
+      // Never sleeps past the deadline; the poll at the deadline is the last one.
+      assert.deepEqual(r.sleeps, [5000, 5000, 2000]);
+      assert.equal(short.requestsTo("POST", "/api/connectors/device/token").length, 3);
       assert.match(r.stderr, /expired before it was approved/);
     } finally {
       await short.stop();
     }
+  });
+
+  it("collects an approval made in the last seconds", async () => {
+    const short = new MockServer({ deviceInterval: 5, deviceExpiresIn: 12 });
+    await short.start();
+    try {
+      short.deviceScript = ["pending", "pending", "approve"];
+      const r = await runCli(["login", "--no-browser"], { home, apiUrl: short.url });
+      assert.equal(r.code, 0, r.stderr);
+      assert.deepEqual(r.sleeps, [5000, 5000, 2000]);
+    } finally {
+      await short.stop();
+    }
+  });
+
+  it("sends no key with the polls when none is stored", async () => {
+    mock.deviceScript = ["pending", "approve"];
+    const before = mock.requests.length;
+    const r = await runCli(["login", "--no-browser"], { home, apiUrl: mock.url });
+    assert.equal(r.code, 0, r.stderr);
+    const polls = mock.requests.slice(before).filter((q) => q.path === "/api/connectors/device/token");
+    assert.equal(polls.length, 2);
+    for (const q of polls) assert.equal(q.headers.authorization, undefined);
   });
 
   it("treats a 429 while polling like slow_down", async () => {
@@ -176,7 +201,7 @@ describe("login (device flow)", () => {
       const r = await runCli(["login", "--force", "--no-browser"], { home, apiUrl: mock.url });
       assert.equal(r.code, 0, r.stderr);
       assert.doesNotMatch(r.stderr, /warning/);
-      assert.match(r.stdout, /The previous key [0-9a-f-]{36} had already stopped working\./);
+      assert.match(r.stdout, /The server retired the previous key [0-9a-f-]{36}\./);
       assert.equal(mock.keyRecord(oldest)?.revoked, true);
       assert.equal(mock.keyRecord(muse)?.revoked, false, "keys made for other apps are never retired");
     } finally {
@@ -218,15 +243,65 @@ describe("login (device flow)", () => {
     assert.equal(mock.requestsTo("POST", "/api/connectors/device/code").length, before);
   });
 
-  it("--force replaces a valid key and revokes the old one", async () => {
-    const oldKey = mock.issueKey();
+  it("--force sends the stored key with each poll; the server retires it and the tool does not DELETE it", async () => {
+    const oldKey = mock.issueKey({ channel: "cli" });
     const store = new CredentialStore(credPath(home), process.platform, () => {});
     await store.set(mock.url, { api_key: oldKey, expires_at: null, grant_id: null, scopes: [] });
+    mock.deviceScript = ["pending", "approve"];
+    const before = mock.requests.length;
+    const r = await runCli(["login", "--force", "--no-browser", "--json"], { home, apiUrl: mock.url });
+    assert.equal(r.code, 0, r.stderr);
+    const after = mock.requests.slice(before);
+    const polls = after.filter((q) => q.path === "/api/connectors/device/token");
+    assert.equal(polls.length, 2);
+    for (const q of polls) assert.equal(q.headers.authorization, `Bearer ${oldKey}`);
+    assert.equal(after.filter((q) => q.method === "DELETE").length, 0);
+    assert.equal(mock.keyRecord(oldKey)?.revoked, true);
+    assert.notEqual((await store.get(mock.url))?.api_key, oldKey);
+    assert.equal(r.json().replaced_key_id, mock.keyRecord(oldKey)?.id);
+    assert.equal(r.json().previous_key_active, false);
+    assert.ok(!r.stdout.includes(oldKey) && !r.stderr.includes(oldKey));
+    mock.deviceScript = ["approve"];
+    const human = await runCli(["login", "--force", "--no-browser"], { home, apiUrl: mock.url });
+    assert.equal(human.code, 0, human.stderr);
+    assert.match(human.stdout, /The server retired the previous key [0-9a-f-]{36}\./);
+  });
+
+  it("--force over a key the server does not retire says it still works", async () => {
+    const pasted = mock.issueKey({ channel: "key" });
+    await new CredentialStore(credPath(home), process.platform, () => {}).set(mock.url, { api_key: pasted, expires_at: null, grant_id: null, scopes: [] });
     mock.deviceScript = ["approve"];
     const r = await runCli(["login", "--force", "--no-browser"], { home, apiUrl: mock.url });
     assert.equal(r.code, 0, r.stderr);
+    assert.equal(mock.keyRecord(pasted)?.revoked, false);
+    assert.match(r.stderr, /warning: The previous key [0-9a-f-]{36} still works/);
+  });
+
+  it("a stored key that no longer works is still sent, and a 401 for it falls back to no key", async () => {
+    const strict = new MockServer({ deviceInterval: 5, rejectBadBearer: true });
+    await strict.start();
+    try {
+      const dead = strict.issueKey({ channel: "cli" });
+      strict.keys.get(dead)!.revoked = true;
+      await new CredentialStore(credPath(home), process.platform, () => {}).set(strict.url, { api_key: dead, expires_at: null, grant_id: null, scopes: [] });
+      strict.deviceScript = ["approve"];
+      const r = await runCli(["login", "--no-browser"], { home, apiUrl: strict.url });
+      assert.equal(r.code, 0, r.stderr);
+      const polls = strict.requestsTo("POST", "/api/connectors/device/token");
+      assert.deepEqual(polls.map((q) => q.headers.authorization), [`Bearer ${dead}`, undefined]);
+      assert.ok(!r.stdout.includes(dead) && !r.stderr.includes(dead));
+    } finally {
+      await strict.stop();
+    }
+  });
+
+  it("login --with-token --force revokes the previous stored key itself", async () => {
+    const oldKey = mock.issueKey({ channel: "cli" });
+    const pasted = mock.issueKey({ channel: "key" });
+    await new CredentialStore(credPath(home), process.platform, () => {}).set(mock.url, { api_key: oldKey, expires_at: null, grant_id: null, scopes: [] });
+    const r = await runCli(["login", "--with-token", "--force"], { home, apiUrl: mock.url, stdin: pasted });
+    assert.equal(r.code, 0, r.stderr);
     assert.equal(mock.keyRecord(oldKey)?.revoked, true);
-    assert.notEqual((await store.get(mock.url))?.api_key, oldKey);
     assert.match(r.stdout, /Revoked the previous key/);
   });
 

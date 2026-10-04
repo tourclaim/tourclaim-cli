@@ -703,13 +703,33 @@ class Client:
             "interval": interval if valid_interval else 5,
         }
 
-    def poll_device_token(self, device_code: str) -> DeviceToken:
+    def poll_device_token(self, device_code: str, replacing: Optional[str] = None) -> DeviceToken:
         """Polls once. Returns the key once the traveler approved; raises
         :class:`AuthorizationPendingError` or :class:`SlowDownError` while
-        waiting, :class:`AccessDeniedError` or :class:`ExpiredTokenError` when it is over."""
-        response = self.request(
-            "POST", DEVICE_TOKEN_PATH, body={"device_code": device_code}, auth=False, allow_status=(400, 429), retry_rate_limit=False
-        )
+        waiting, :class:`AccessDeniedError` or :class:`ExpiredTokenError` when it is over.
+
+        ``replacing`` is a key this sign-in replaces (the one stored for this API
+        URL). It is sent as a bearer so the server retires it when it mints the
+        new key; the client never needs to revoke it afterwards."""
+        return self._poll_device_token(device_code, [replacing])
+
+    def _poll_device_token(self, device_code: str, bearer: List[Optional[str]]) -> DeviceToken:
+        def send(key: Optional[str]) -> Any:
+            return self.request(
+                "POST",
+                DEVICE_TOKEN_PATH,
+                body={"device_code": device_code},
+                headers={"Authorization": f"Bearer {key}"} if key else None,
+                auth=False,
+                allow_status=(400, 401, 429),
+                retry_rate_limit=False,
+            )
+
+        response = send(bearer[0])
+        if response.status == 401 and bearer[0]:
+            # The key being replaced was not accepted; sign in without it from now on.
+            bearer[0] = None
+            response = send(None)
         if 200 <= response.status < 300:
             token = response.data if isinstance(response.data, dict) else {}
             api_key = token.get("api_key")
@@ -744,32 +764,44 @@ class Client:
         *,
         sleep: Optional[Callable[[float], None]] = None,
         now: Optional[Callable[[], float]] = None,
+        replacing: Optional[str] = None,
     ) -> DeviceToken:
         """Polls at the interval the API asks for until the traveler approves,
-        slowing down when told to, and gives up when the code expires. The
-        client then uses the new key."""
+        slowing down when told to. It never sleeps past the code's expiry, and the
+        poll made at or after expiry is the last one: the server keeps an approved
+        code alive a little longer, so an approval in the final seconds still
+        yields a key. ``replacing`` is sent with each poll (see
+        :meth:`poll_device_token`). The client then uses the new key."""
         sleep = sleep or self._sleep
         now = now or time.time
         interval = float(code.get("interval") or 5)
         interval = max(1.0, interval)
         deadline = now() + float(code["expires_in"])
         failures = 0
+        bearer: List[Optional[str]] = [replacing]
+
+        def expired() -> ExpiredTokenError:
+            return ExpiredTokenError("The sign-in code expired before it was approved. Run tourclaim login again.")
+
         while True:
-            if now() + interval > deadline:
-                raise ExpiredTokenError("The sign-in code expired before it was approved. Run tourclaim login again.")
-            sleep(interval)
+            sleep(max(0.0, min(interval, deadline - now())))
+            final = now() >= deadline
             try:
-                token = self.poll_device_token(code["device_code"])
+                token = self._poll_device_token(code["device_code"], bearer)
             except AuthorizationPendingError:
+                if final:
+                    raise expired() from None
                 failures = 0
                 continue
             except SlowDownError:
+                if final:
+                    raise expired() from None
                 failures = 0
                 interval += 5
                 continue
             except (NetworkError, RequestTimeoutError):
                 failures += 1
-                if failures < MAX_POLL_FAILURES:
+                if not final and failures < MAX_POLL_FAILURES:
                     interval = min(interval * 2, 60.0)
                     continue
                 raise
@@ -785,14 +817,21 @@ class Client:
         client_name: Optional[str] = None,
         sleep: Optional[Callable[[float], None]] = None,
         now: Optional[Callable[[], float]] = None,
+        replacing: Optional[str] = None,
     ) -> DeviceToken:
-        """Signs in with a device code the traveler approves in their own browser.
+        """Signs in with a device code: the traveler opens the page and types the
+        code in their own browser.
 
-        ``on_code`` is called with the code to show the traveler; by default
-        the link and code are printed to stderr. Returns the new key's details,
-        and the client uses the key from then on. With ``save=True`` the key is
-        also stored where ``tourclaim login`` keeps it.
+        ``on_code`` is called with the page and code to show the traveler; by
+        default they are printed to stderr. Returns the new key's details, and the
+        client uses the key from then on. With ``save=True`` the key is also stored
+        where ``tourclaim login`` keeps it, and the key stored there before is sent
+        as ``replacing`` so the server retires it. Pass ``replacing`` to name the
+        key being replaced yourself.
         """
+        if save and replacing is None:
+            stored = CredentialStore.default().get(self.api_url)
+            replacing = stored.api_key if stored else None
         code = self.request_device_code(scopes, client_name=client_name)
         if on_code is not None:
             on_code(code)
@@ -802,7 +841,7 @@ class Client:
                 f"Enter this code on that page: {code['user_code']}\n"
             )
             sys.stderr.flush()
-        token = self.wait_for_device_token(code, sleep=sleep, now=now)
+        token = self.wait_for_device_token(code, sleep=sleep, now=now, replacing=replacing)
         if save:
             CredentialStore.default().set(
                 self.api_url,

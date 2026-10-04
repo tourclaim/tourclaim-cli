@@ -332,3 +332,13 @@ def test_network_errors_and_timeouts():
 def test_rejects_unsafe_api_urls():
     with pytest.raises(UsageError):
         Client("tc_muse_x", "http://api.example.com")
+
+
+def test_device_login_save_sends_the_stored_key_so_the_server_retires_it(mock, isolated_env):
+    old = mock.issue_key(channel="cli")
+    tourclaim.CredentialStore.default().set(mock.url, tourclaim.StoredCredential(old))
+    mock.device_script = ["approve"]
+    Client(api_url=mock.url, load_credentials=False).device_login(save=True, sleep=lambda s: None, on_code=lambda code: None)
+    assert mock.requests_to("POST", "/api/connectors/device/token")[-1].headers.get("authorization") == f"Bearer {old}"
+    assert mock.key_record(old).revoked is True
+    assert tourclaim.CredentialStore.default().get(mock.url).api_key != old

@@ -110,6 +110,8 @@ export interface MockOptions {
   relativeDiscovery?: boolean;
   /** Behave like a server from before the security review: also send verification_uri_complete. */
   sendCompleteUri?: boolean;
+  /** Answer 401 to a token poll whose bearer key is not a live key (the contract allows ignoring it instead). */
+  rejectBadBearer?: boolean;
   traveler?: string;
 }
 
@@ -379,7 +381,7 @@ export class MockServer {
     if (injected) throw new HttpError(injected.status, injected.body, injected.headers);
 
     if (path === "/api/connectors/device/code" && method === "POST") return this.deviceCode(r.body);
-    if (path === "/api/connectors/device/token" && method === "POST") return this.deviceToken(r.body);
+    if (path === "/api/connectors/device/token" && method === "POST") return this.deviceToken(r.body, r.headers.authorization);
 
     const key = this.authenticate(r);
     const v1 = path.slice("/api/connectors/v1".length);
@@ -509,7 +511,7 @@ export class MockServer {
     };
   }
 
-  private deviceToken(body: unknown): unknown {
+  private deviceToken(body: unknown, authorization: string | undefined): unknown {
     const b = (body ?? {}) as Record<string, unknown>;
     if (typeof b.device_code !== "string") throw new HttpError(400, { error: "invalid_request" });
     const d = this.devices.get(b.device_code);
@@ -519,7 +521,9 @@ export class MockServer {
     if (scripted === "denied") throw new HttpError(400, { error: "access_denied", error_description: "The traveler declined this connection." });
     if (scripted === "expired") throw new HttpError(400, { error: "expired_token" });
     if (scripted === "approve" && d) d.status = "approved";
-    if (!d || d.status === "consumed" || Date.now() > d.createdAt + d.expiresIn * 1000) {
+    // An approved code stays collectable for 60 seconds past its expiry.
+    const lifetime = (d?.expiresIn ?? 0) * 1000 + (d?.status === "approved" ? 60_000 : 0);
+    if (!d || d.status === "consumed" || Date.now() > d.createdAt + lifetime) {
       throw new HttpError(400, { error: "expired_token" });
     }
     const now = Date.now();
@@ -535,6 +539,16 @@ export class MockServer {
     }
     if (d.status === "denied") throw new HttpError(400, { error: "access_denied", error_description: d.description ?? "Declined." });
     if (d.status === "pending") throw new HttpError(400, { error: "authorization_pending" });
+    // A poll may carry the key this sign-in replaces. If it is a live CLI key of
+    // the same traveler, it is retired as the new one is minted; otherwise it is ignored.
+    const replacing = /^Bearer (.+)$/.exec(authorization ?? "")?.[1];
+    const old = replacing ? this.keys.get(replacing) : undefined;
+    if (replacing && this.options.rejectBadBearer && (!old || old.revoked || old.expiresAt.getTime() <= Date.now())) {
+      throw fail(401, "Muse connection expired or disconnected", { "WWW-Authenticate": "Bearer" });
+    }
+    if (old && old.channel === "cli" && old.traveler === d.traveler && !old.revoked && old.expiresAt.getTime() > Date.now()) {
+      old.revoked = true;
+    }
     // At the limit of five connections, retire the traveler's oldest CLI key;
     // keys made for other apps are never touched.
     const active = [...this.keys.values()].filter((k) => k.traveler === d.traveler && !k.revoked && k.expiresAt.getTime() > Date.now());

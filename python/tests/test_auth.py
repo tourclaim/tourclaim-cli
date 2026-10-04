@@ -126,16 +126,39 @@ def test_exits_3_when_the_code_expired_or_was_used(mock, home):
     assert "expired or was already used" in r.stderr
 
 
-def test_stops_polling_at_expires_in(home):
+def test_stops_at_expires_in_after_one_final_poll_at_the_deadline(home):
     short = MockServer(device_interval=5, device_expires_in=12)
     short.start()
     try:
         r = run_cli(["login"], home=home, api_url=short.url)
         assert r.code == 3
-        assert r.sleeps == [5, 5]
+        # Never sleeps past the deadline; the poll at the deadline is the last one.
+        assert r.sleeps == [5, 5, 2]
+        assert len(short.requests_to("POST", "/api/connectors/device/token")) == 3
         assert "expired before it was approved" in r.stderr
     finally:
         short.stop()
+
+
+def test_collects_an_approval_made_in_the_last_seconds(home):
+    short = MockServer(device_interval=5, device_expires_in=12)
+    short.start()
+    try:
+        short.device_script = ["pending", "pending", "approve"]
+        r = run_cli(["login", "--no-browser"], home=home, api_url=short.url)
+        assert r.code == 0, r.stderr
+        assert r.sleeps == [5, 5, 2]
+    finally:
+        short.stop()
+
+
+def test_sends_no_key_with_the_polls_when_none_is_stored(mock, home):
+    mock.device_script = ["pending", "approve"]
+    before = len(mock.requests)
+    r = run_cli(["login", "--no-browser"], home=home, api_url=mock.url)
+    assert r.code == 0, r.stderr
+    polls = [q for q in mock.requests[before:] if q.path == "/api/connectors/device/token"]
+    assert len(polls) == 2 and all("authorization" not in q.headers for q in polls)
 
 
 def test_treats_a_429_while_polling_like_slow_down(mock, home):
@@ -185,7 +208,7 @@ def test_at_the_key_limit_the_server_retires_the_oldest_login_key_and_force_does
         mock.device_traveler = None
     assert r.code == 0, r.stderr
     assert "warning" not in r.stderr
-    assert re.search(r"The previous key [0-9a-f-]{36} had already stopped working\.", r.stdout)
+    assert re.search(r"The server retired the previous key [0-9a-f-]{36}\.", r.stdout)
     assert mock.key_record(oldest).revoked is True
     assert mock.key_record(muse).revoked is False, "keys made for other apps are never retired"
 
@@ -217,14 +240,62 @@ def test_reports_an_existing_valid_key_instead_of_starting_a_new_sign_in(mock, h
     assert len(mock.requests_to("POST", "/api/connectors/device/code")) == before
 
 
-def test_force_replaces_a_valid_key_and_revokes_the_old_one(mock, home):
-    old_key = mock.issue_key()
+def test_force_sends_the_stored_key_with_each_poll_and_the_server_retires_it(mock, home):
+    old_key = mock.issue_key(channel="cli")
     save_key(home, mock.url, old_key)
+    mock.device_script = ["pending", "approve"]
+    before = len(mock.requests)
+    r = run_cli(["login", "--force", "--no-browser", "--json"], home=home, api_url=mock.url)
+    assert r.code == 0, r.stderr
+    after = mock.requests[before:]
+    polls = [q for q in after if q.path == "/api/connectors/device/token"]
+    assert len(polls) == 2 and all(q.headers.get("authorization") == f"Bearer {old_key}" for q in polls)
+    assert [q for q in after if q.method == "DELETE"] == [], "the tool never revokes the replaced key itself"
+    assert mock.key_record(old_key).revoked is True
+    assert store_for(home).get(mock.url).api_key != old_key
+    assert r.json()["replaced_key_id"] == mock.key_record(old_key).id
+    assert r.json()["previous_key_active"] is False
+    assert old_key not in r.stdout + r.stderr
+    mock.device_script = ["approve"]
+    human = run_cli(["login", "--force", "--no-browser"], home=home, api_url=mock.url)
+    assert human.code == 0, human.stderr
+    assert re.search(r"The server retired the previous key [0-9a-f-]{36}\.", human.stdout)
+
+
+def test_force_over_a_key_the_server_does_not_retire_says_it_still_works(mock, home):
+    pasted = mock.issue_key(channel="key")
+    save_key(home, mock.url, pasted)
     mock.device_script = ["approve"]
     r = run_cli(["login", "--force", "--no-browser"], home=home, api_url=mock.url)
     assert r.code == 0, r.stderr
+    assert mock.key_record(pasted).revoked is False
+    assert re.search(r"warning: The previous key [0-9a-f-]{36} still works", r.stderr)
+
+
+def test_a_dead_stored_key_is_still_sent_and_a_401_for_it_falls_back_to_no_key(home):
+    strict = MockServer(device_interval=5, reject_bad_bearer=True)
+    strict.start()
+    try:
+        dead = strict.issue_key(channel="cli")
+        strict.keys[dead].revoked = True
+        save_key(home, strict.url, dead)
+        strict.device_script = ["approve"]
+        r = run_cli(["login", "--no-browser"], home=home, api_url=strict.url)
+        assert r.code == 0, r.stderr
+        polls = strict.requests_to("POST", "/api/connectors/device/token")
+        assert [q.headers.get("authorization") for q in polls] == [f"Bearer {dead}", None]
+        assert dead not in r.stdout + r.stderr
+    finally:
+        strict.stop()
+
+
+def test_with_token_force_revokes_the_previous_stored_key_itself(mock, home):
+    old_key = mock.issue_key(channel="cli")
+    pasted = mock.issue_key(channel="key")
+    save_key(home, mock.url, old_key)
+    r = run_cli(["login", "--with-token", "--force"], home=home, api_url=mock.url, stdin=pasted.encode())
+    assert r.code == 0, r.stderr
     assert mock.key_record(old_key).revoked is True
-    assert store_for(home).get(mock.url).api_key != old_key
     assert "Revoked the previous key" in r.stdout
 
 
