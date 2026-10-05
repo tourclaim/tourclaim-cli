@@ -74,6 +74,16 @@
               }
             }
           },
+          "422": {
+            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Too many requests for this traveler. Wait a minute before retrying.",
             "content": {
@@ -86,16 +96,6 @@
           },
           "503": {
             "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
             "content": {
               "application/json": {
                 "schema": {
@@ -177,36 +177,6 @@
               }
             }
           },
-          "429": {
-            "description": "Too many requests for this traveler. Wait a minute before retrying.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
           "409": {
             "description": "This Idempotency-Key was already used with different fields, or belongs to an earlier connection. Use a new key for a new draft.",
             "headers": {
@@ -229,6 +199,36 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this traveler. Wait a minute before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -301,6 +301,16 @@
               }
             }
           },
+          "422": {
+            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Too many requests for this traveler. Wait a minute before retrying.",
             "content": {
@@ -313,16 +323,6 @@
           },
           "503": {
             "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
             "content": {
               "application/json": {
                 "schema": {
@@ -391,26 +391,6 @@
               }
             }
           },
-          "429": {
-            "description": "Too many requests for this traveler. Wait a minute before retrying.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
           "404": {
             "description": "No such record for this traveler and connection. Also returned for a record that belongs to someone else.",
             "content": {
@@ -423,6 +403,26 @@
           },
           "422": {
             "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this traveler. Wait a minute before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -499,26 +499,6 @@
               }
             }
           },
-          "429": {
-            "description": "Too many requests for this traveler. Wait a minute before retrying.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
           "404": {
             "description": "No such record for this traveler and connection. Also returned for a record that belongs to someone else.",
             "content": {
@@ -561,6 +541,26 @@
           },
           "422": {
             "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this traveler. Wait a minute before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -620,38 +620,8 @@
               }
             }
           },
-          "429": {
-            "description": "Too many requests for this traveler. Wait a minute before retrying.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
           "404": {
             "description": "No such record for this traveler and connection. Also returned for a record that belongs to someone else.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
             "content": {
               "application/json": {
                 "schema": {
@@ -682,6 +652,36 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this traveler. Wait a minute before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -760,26 +760,6 @@
               }
             }
           },
-          "429": {
-            "description": "Too many requests for this traveler. Wait a minute before retrying.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
           "404": {
             "description": "No such record for this traveler and connection. Also returned for a record that belongs to someone else.",
             "content": {
@@ -822,6 +802,26 @@
           },
           "422": {
             "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this traveler. Wait a minute before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -900,26 +900,6 @@
               }
             }
           },
-          "429": {
-            "description": "Too many requests for this traveler. Wait a minute before retrying.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
           "404": {
             "description": "No such record for this traveler and connection. Also returned for a record that belongs to someone else.",
             "content": {
@@ -960,6 +940,16 @@
               }
             }
           },
+          "413": {
+            "description": "The request is larger than 8 MiB. The file itself may be at most 5 MiB.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "422": {
             "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
             "content": {
@@ -970,8 +960,18 @@
               }
             }
           },
-          "413": {
-            "description": "The request is larger than 8 MiB. The file itself may be at most 5 MiB.",
+          "429": {
+            "description": "Too many requests for this traveler. Wait a minute before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1050,38 +1050,8 @@
               }
             }
           },
-          "429": {
-            "description": "Too many requests for this traveler. Wait a minute before retrying.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
           "404": {
             "description": "No such record for this traveler and connection. Also returned for a record that belongs to someone else.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1112,6 +1082,36 @@
                 }
               }
             },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests for this traveler. Wait a minute before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1186,6 +1186,16 @@
               }
             }
           },
+          "422": {
+            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Too many requests for this traveler. Wait a minute before retrying.",
             "content": {
@@ -1198,16 +1208,6 @@
           },
           "503": {
             "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1276,26 +1276,6 @@
               }
             }
           },
-          "429": {
-            "description": "Too many requests for this traveler. Wait a minute before retrying.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
           "404": {
             "description": "No such record for this traveler and connection. Also returned for a record that belongs to someone else.",
             "content": {
@@ -1315,6 +1295,26 @@
                 }
               }
             }
+          },
+          "429": {
+            "description": "Too many requests for this traveler. Wait a minute before retrying.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
           }
         }
       }
@@ -1322,7 +1322,7 @@
     "/api/connectors/v1/key": {
       "get": {
         "summary": "Describe the key making this request",
-        "description": "Return this connection's id, when its key expires, what it may do and whose account it is. Call it to check a stored key still works before starting work, and to warn the traveler shortly before it expires; an expired key cannot be renewed, so they reconnect.",
+        "description": "Return this connection's id, when it expires, what it may do, and (for the TourClaim command line) whose account it is. Call it to check a stored key still works before starting work, and to warn the traveler shortly before it expires. A traveler key is not renewed: when it expires they reconnect. An OAuth connection's date moves forward each time its refresh token is used.",
         "operationId": "get_connection",
         "responses": {
           "200": {
@@ -1355,6 +1355,16 @@
               }
             }
           },
+          "422": {
+            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Too many requests for this traveler. Wait a minute before retrying.",
             "content": {
@@ -1367,16 +1377,6 @@
           },
           "503": {
             "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1420,6 +1420,16 @@
               }
             }
           },
+          "422": {
+            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Too many requests for this traveler. Wait a minute before retrying.",
             "content": {
@@ -1432,16 +1442,6 @@
           },
           "503": {
             "description": "The connector is temporarily unavailable. Retry later; nothing was changed.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "One or more fields are invalid. 'detail' lists each one by location. Correct them and retry; nothing was saved.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1465,7 +1465,7 @@
         "properties": {
           "expected_revision": {
             "type": "integer",
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Expected Revision",
             "description": "The revision number from the most recent response for this intake. The call is refused with 409 if the intake has changed since; fetch it again and retry.",
             "examples": [
@@ -1652,7 +1652,7 @@
         "properties": {
           "expected_revision": {
             "type": "integer",
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Expected Revision",
             "description": "The revision number from the most recent response for this intake. The call is refused with 409 if the intake has changed since; fetch it again and retry.",
             "examples": [
@@ -1866,8 +1866,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 99999999.0,
-                "minimum": 0.0
+                "maximum": 99999999,
+                "minimum": 0
               },
               {
                 "type": "string",
@@ -1887,8 +1887,8 @@
             "anyOf": [
               {
                 "type": "number",
-                "maximum": 99999999.0,
-                "minimum": 0.0
+                "maximum": 99999999,
+                "minimum": 0
               },
               {
                 "type": "string",
@@ -1924,7 +1924,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "exclusiveMinimum": 0.0
+                "exclusiveMinimum": 0
               },
               {
                 "type": "null"
@@ -2139,7 +2139,7 @@
             "anyOf": [
               {
                 "type": "integer",
-                "exclusiveMinimum": 0.0
+                "exclusiveMinimum": 0
               },
               {
                 "type": "null"
@@ -2416,7 +2416,7 @@
             "type": "string",
             "format": "date-time",
             "title": "Expires At",
-            "description": "When the key stops working (UTC). Keys are not renewed: the traveler reconnects."
+            "description": "When this connection ends (UTC). A traveler key is not renewed: the traveler reconnects. For an OAuth connection this is when its refresh token lapses, which moves forward on each refresh; each access token itself lasts an hour."
           },
           "scopes": {
             "items": {
@@ -2588,7 +2588,7 @@
         "properties": {
           "expected_revision": {
             "type": "integer",
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Expected Revision",
             "description": "The revision number from the most recent response for this intake. The call is refused with 409 if the intake has changed since; fetch it again and retry.",
             "examples": [
@@ -2627,7 +2627,7 @@
         "properties": {
           "expected_revision": {
             "type": "integer",
-            "minimum": 1.0,
+            "minimum": 1,
             "title": "Expected Revision",
             "description": "The revision number from the most recent response for this intake. The call is refused with 409 if the intake has changed since; fetch it again and retry.",
             "examples": [

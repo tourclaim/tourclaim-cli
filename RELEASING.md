@@ -38,7 +38,7 @@ node dist/cli.js schema --api-url https://app.getcopernican.com > openapi/connec
 npm test
 ```
 
-The current copy was taken from the server's review-mode snapshot before release 1.57.1 was deployed. Refresh it from production once 1.57.1 is live.
+The current copy was taken from production (server 1.57.6) on 2026-10-05.
 
 ## Every later release
 
