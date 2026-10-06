@@ -1,10 +1,22 @@
 # tourclaim (Python)
 
-Python client and command line for [TourClaim](https://app.getcopernican.com/muse) by Copernican: start, fill in and submit a trip cancellation claim against the travel insurance that comes with the credit card the trip was booked with. It works for a person at a terminal, for a Python program, and for an AI agent acting for one traveler.
+Python SDK and command-line client for [TourClaim by Copernican](https://www.getcopernican.com/travelers). Give your app, assistant, or terminal a travel-claim workflow: save a traveler’s answers, collect the evidence they choose to share, hand them the authorization to sign, and follow their claim. Works with any assistant that can run shell commands or call the API; no enrolled tour operator or booking-platform integration is required.
 
 > **Review mode.** The TourClaim connector API currently runs in review mode: it creates synthetic claims and files nothing with an insurer. Use fictional booking and medical data only. `tourclaim status` (or `Client().connector_info()["mode"]`) shows the current mode, and every draft and claim the API returns says which mode it came from.
 
 This is the Python edition of [tourclaim](https://github.com/tourclaim/tourclaim-cli). It has the same commands, flags, output, exit codes and credentials file as the Node edition (`npx tourclaim`), so a key saved by one works in the other. It adds a typed library, `tourclaim.Client`.
+
+## For developers, agents, and platforms
+
+TourClaim’s service reviews credit-card travel benefits, organizes receipts and cancellation evidence, coordinates medical-provider evaluation when needed, and handles claim preparation, filing, and follow-up. A traveler can bring a flight, hotel, or tour booking directly. Coverage, reimbursement, and clinical documentation depend on the relevant benefit administrator or provider.
+
+The package exposes saved intake, selected email and file evidence, traveler authorization, submission to Copernican, and status. **The API and both CLI editions currently use synthetic review mode:** no insurer filing, payment, or clinical service is triggered. To start a real claim today, the traveler uses the [online claim form](https://app.getcopernican.com/travelers/claim), where they supply their documents and payment details securely.
+
+- **Terminal agents:** use either CLI with `--json`; the traveler approves sign-in and signs in their own browser.
+- **Python applications:** use `tourclaim.Client` from the [Python edition](https://github.com/tourclaim/tourclaim-cli/tree/main/python#readme).
+- **Platforms and tool-calling assistants:** use the [developer guide](https://app.getcopernican.com/developers) and [OpenAPI schema](https://app.getcopernican.com/api/connectors/v1/openapi.json).
+
+Muse is one integration of these capabilities and is under review; it is not required to use this package. Existing `/muse` URLs and key formats are compatibility details and continue to work. Each connection acts for one traveler, not an operator or a platform-wide account.
 
 ## What it does
 

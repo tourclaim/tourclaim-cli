@@ -1,7 +1,7 @@
 {
   "name": "tourclaim",
   "version": "0.1.0",
-  "description": "Command-line client for TourClaim: start, fill in and submit a trip cancellation claim against the travel insurance that comes with your credit card, from a terminal or an AI agent.",
+  "description": "Travel-claim CLI for developers, travelers, and AI agents: saved intake, selected evidence, traveler authorization, and claim status with TourClaim by Copernican.",
   "keywords": [
     "tourclaim",
     "copernican",
@@ -13,8 +13,8 @@
     "credit card benefits",
     "ai agents",
     "agent tools",
-    "mcp",
-    "cli"
+    "cli",
+    "travel platforms"
   ],
   "homepage": "https://github.com/tourclaim/tourclaim-cli#readme",
   "bugs": {
