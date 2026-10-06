@@ -1,10 +1,12 @@
-# tourclaim (Python)
+# tourclaim (Python CLI, SDK and MCP server)
+
+<!-- mcp-name: io.github.tourclaim/tourclaim -->
 
 Python client and command line for [TourClaim](https://app.getcopernican.com/muse) by Copernican: start, fill in and submit a trip cancellation claim against the travel insurance that comes with the credit card the trip was booked with. It works for a person at a terminal, for a Python program, and for an AI agent acting for one traveler.
 
 > **Review mode.** The TourClaim connector API currently runs in review mode: it creates synthetic claims and files nothing with an insurer. Use fictional booking and medical data only. `tourclaim status` (or `Client().connector_info()["mode"]`) shows the current mode, and every draft and claim the API returns says which mode it came from.
 
-This is the Python edition of [tourclaim](https://github.com/tourclaim/tourclaim-cli). It has the same commands, flags, output, exit codes and credentials file as the Node edition (`npx tourclaim`), so a key saved by one works in the other. It adds a typed library, `tourclaim.Client`.
+This is the Python edition of [tourclaim](https://github.com/tourclaim/tourclaim-cli). It has the same commands, flags, output, exit codes and credentials file as the Node edition (`npx tourclaim`), so a key saved by one works in the other. It adds a typed library, `tourclaim.Client`, and an optional MCP server.
 
 ## What it does
 
@@ -20,7 +22,7 @@ AI agents: read [AGENTS.md](https://github.com/tourclaim/tourclaim-cli/blob/main
 
 ## Install
 
-Requires Python 3.9 or newer. There are no runtime dependencies.
+The CLI and SDK require Python 3.9 or newer and have no runtime dependencies. The optional MCP extra requires Python 3.10 or newer and installs the MCP SDK.
 
 ```sh
 pip install tourclaim
@@ -34,6 +36,25 @@ pipx install tourclaim
 ```
 
 `python -m tourclaim` works too.
+
+## MCP server for AI assistants
+
+With [uv](https://docs.astral.sh/uv/getting-started/installation/) installed, add this to an MCP client's configuration (Claude Desktop, Cursor, and clients using `mcpServers`):
+
+```json
+{
+  "mcpServers": {
+    "tourclaim": {
+      "command": "uvx",
+      "args": ["--python", "3.12", "--from", "tourclaim[mcp]==0.2.0", "tourclaim", "mcp"]
+    }
+  }
+}
+```
+
+Or install `pip install 'tourclaim[mcp]==0.2.0'` in a Python 3.10+ environment and configure that environment's `tourclaim` executable with `args: ["mcp"]`. MCP uses stdio; it waits for a client, and does not print a welcome message to stdout. The server exposes 17 tools with input schemas and read/write annotations. No API key is required to start: the assistant can begin a browser sign-in at the traveler's request. The credential stays in the local credentials store and is never returned to the model.
+
+The current service is in **review mode**. Use fictional data only. The traveler must approve evidence sharing and sign the authorization in their own browser. See [MCP.md](https://github.com/tourclaim/tourclaim-cli/blob/main/MCP.md) for the tool list, VS Code and GitHub configurations, troubleshooting, and transport limitations.
 
 ## Command line quickstart
 
@@ -65,7 +86,7 @@ tourclaim intake submit <id>
 tourclaim claims list
 ```
 
-Every command takes `--json` (one JSON value per line on stdout, errors as one JSON line on stderr), `--api-url <url>`, `-h`/`--help` and `--version`. The full command reference, the field table and the JSON output contract are in the [main README](https://github.com/tourclaim/tourclaim-cli#commands); they apply unchanged.
+Every ordinary CLI command takes `--json` (one JSON value per line on stdout, errors as one JSON line on stderr), `--api-url <url>`, `-h`/`--help` and `--version`. The full command reference, the field table and the JSON output contract are in the [main README](https://github.com/tourclaim/tourclaim-cli#commands); they apply unchanged.
 
 | Command | What it does |
 | --- | --- |
@@ -75,6 +96,7 @@ Every command takes `--json` (one JSON value per line on stdout, errors as one J
 | `tourclaim cards search <name>` | Find a card product id. |
 | `tourclaim intake start\|list\|show\|set\|attach\|add-email\|sign\|submit\|delete` | The whole draft lifecycle. |
 | `tourclaim claims list\|show` | Submitted claims and their status. |
+| `tourclaim mcp` | Optional MCP stdio server; install the `mcp` extra. It uses the MCP protocol, not the CLI JSON format. |
 | `tourclaim schema` | The live OpenAPI document with every operation the CLI uses (`openapi-cli.json`; `openapi.json` on older servers). |
 
 ### Exit codes

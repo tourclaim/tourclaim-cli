@@ -1,6 +1,6 @@
 {
   "name": "tourclaim",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Command-line client for TourClaim: start, fill in and submit a trip cancellation claim against the travel insurance that comes with your credit card, from a terminal or an AI agent.",
   "keywords": [
     "tourclaim",
@@ -36,7 +36,10 @@
     "AGENTS.md",
     "CHANGELOG.md",
     "SECURITY.md",
-    "LICENSE"
+    "LICENSE",
+    "MCP.md",
+    "server.json",
+    "llms.txt"
   ],
   "engines": {
     "node": ">=18.3"

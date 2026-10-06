@@ -1,0 +1,41 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.tourclaim/tourclaim",
+  "title": "TourClaim by Copernican",
+  "description": "Prepare credit-card travel insurance claims with traveler consent. Synthetic review mode.",
+  "version": "0.2.0",
+  "repository": {
+    "url": "https://github.com/tourclaim/tourclaim-cli",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/tourclaim/tourclaim-cli/blob/main/MCP.md",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "tourclaim",
+      "version": "0.2.0",
+      "runtimeHint": "uvx",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--python",
+          "value": "3.12"
+        },
+        {
+          "type": "named",
+          "name": "--with",
+          "value": "tourclaim[mcp]==0.2.0"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
