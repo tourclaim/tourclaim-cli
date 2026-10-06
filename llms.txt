@@ -11,7 +11,7 @@
 - [CLI reference](https://github.com/tourclaim/tourclaim-cli#readme): JSON output, drafts, evidence, signing links and claim status.
 - [Full connector OpenAPI schema](https://app.getcopernican.com/api/connectors/v1/openapi-cli.json): All 14 operations for API integrations.
 - [Assistant OpenAPI schema](https://app.getcopernican.com/api/connectors/v1/openapi.json): Curated assistant operations.
-- [Developer overview](https://app.getcopernican.com/muse/developers): Product integration details.
+- [Developer overview](https://app.getcopernican.com/developers): Product integration details.
 
 ## Traveler requirements
 

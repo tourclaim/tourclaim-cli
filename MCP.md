@@ -88,7 +88,7 @@ Tool results provide matching JSON text and `structuredContent`. Successful resu
 - **PyPI:** [`tourclaim[mcp]`](https://pypi.org/project/tourclaim/), with source and typed Python SDK in this repository.
 - **Official MCP Registry identity:** `io.github.tourclaim/tourclaim`. [server.json](server.json) contains the package, version, stdio transport and runtime arguments. The release workflow publishes the listing only after PyPI succeeds. Search the [MCP Registry](https://registry.modelcontextprotocol.io/) for TourClaim to verify publication.
 - **Machine-readable entry points:** [llms.txt](llms.txt), [AGENTS.md](AGENTS.md), [full OpenAPI](https://app.getcopernican.com/api/connectors/v1/openapi-cli.json), and [public service information](https://app.getcopernican.com/api/connectors/v1).
-- **Integration overview:** [TourClaim developers](https://app.getcopernican.com/muse/developers).
+- **Integration overview:** [TourClaim developers](https://app.getcopernican.com/developers).
 
 A registry listing makes this server discoverable to registry consumers; individual client directories decide which servers they show. No directory placement or automatic agent installation is implied.
 

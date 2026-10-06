@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "tourclaim"
 dynamic = ["version"]
-description = "Client and command line for TourClaim: start, fill in and submit a trip cancellation claim against the travel insurance that comes with your credit card, from Python, a terminal or an AI agent."
+description = "Travel-claim SDK and CLI for Python apps, travelers, and AI agents: saved intake, selected evidence, traveler authorization, and claim status with TourClaim by Copernican."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -22,6 +22,7 @@ keywords = [
     "credit card benefits",
     "ai agents",
     "agent tools",
+    "travel platforms",
     "cli",
     "sdk",
     "mcp",

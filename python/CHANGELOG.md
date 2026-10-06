@@ -13,6 +13,14 @@ All notable changes to the Python edition of tourclaim are recorded here. The fo
 
 The ordinary Python CLI and library keep their Python 3.9+ support and zero runtime dependencies. The Node CLI keeps its existing command set; MCP runs through the Python edition.
 
+## [0.1.1] - 2026-10-05
+
+### Changed
+
+- Package descriptions and READMEs explain TourClaim for developers, agents, platforms, and travelers without an operator referral or a particular assistant.
+- Added links to the platform-neutral traveler and developer pages, explained the handoff from saved intake and selected evidence to traveler authorization, and retained the synthetic-review disclosure.
+- Runtime commands, SDK behavior, authentication, credential formats, and consent requirements are unchanged.
+
 ## [0.1.0] - 2026-10-04
 
 First version of the Python edition. Its commands, flags, JSON output, exit codes and credentials file match the Node edition.
