@@ -78,7 +78,7 @@ def client(mock):
 
 
 def test_exports_version_and_errors():
-    assert tourclaim.__version__ == "0.1.0"
+    assert all(part.isdigit() for part in tourclaim.__version__.split("."))
     assert issubclass(ConflictError, APIError) and issubclass(APIError, TourClaimError)
     assert issubclass(UsageError, ValueError) and issubclass(ConsentRequiredError, ValueError)
     for name in tourclaim.__all__:

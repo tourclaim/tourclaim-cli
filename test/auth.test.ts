@@ -1,3 +1,4 @@
+import { VERSION } from "../src/version.js";
 import assert from "node:assert/strict";
 import { readFile, stat, writeFile, mkdir, chmod } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -60,9 +61,9 @@ describe("login (device flow)", () => {
     const r = await runCli(["login", "--no-browser", "--scope", "intakes:write,claims:read"], { home, apiUrl: mock.url });
     assert.equal(r.code, 0, r.stderr);
     const codeReq = mock.requestsTo("POST", "/api/connectors/device/code").at(-1);
-    assert.deepEqual(codeReq?.body, { client: `tourclaim-cli/0.1.0 (${process.platform} x64; node 20.0.0)`, scopes: ["intakes:write", "claims:read"] });
+    assert.deepEqual(codeReq?.body, { client: `tourclaim-cli/${VERSION} (${process.platform} x64; node 20.0.0)`, scopes: ["intakes:write", "claims:read"] });
     for (const req of mock.requests.slice(before)) {
-      assert.match(String(req.headers["user-agent"]), /^tourclaim-cli\/0\.1\.0 \(\w+ x64; node 20\.0\.0\)$/);
+      assert.equal(req.headers["user-agent"], `tourclaim-cli/${VERSION} (${process.platform} x64; node 20.0.0)`);
     }
   });
 

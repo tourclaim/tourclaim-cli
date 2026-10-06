@@ -65,8 +65,12 @@ def test_uses_no_em_dashes_in_docs_or_source():
 def test_the_package_imports_only_the_standard_library():
     allowed = set(sys.stdlib_module_names) | {"__future__", "tourclaim"}
     for name in os.listdir(os.path.join(PYTHON_DIR, "src", "tourclaim")):
+        if name == "mcp.py":
+            continue  # Optional adapter is imported only by tourclaim mcp.
         if name.endswith(".py"):
             for match in re.finditer(r"^\s*(?:from|import) ([A-Za-z_]\w*)", read(f"src/tourclaim/{name}"), re.M):
+                if name == "cli.py" and match.group(1) == "mcp":
+                    continue  # Lazy optional-dependency check in run_mcp.
                 assert match.group(1) in allowed, f"{name} imports {match.group(1)}"
 
 
@@ -154,3 +158,26 @@ def test_unknown_commands_exit_2_as_json_in_json_mode(home):
 def test_options_may_come_before_the_command(home):
     r = run_cli(["--api-url", "http://127.0.0.1:9", "--json", "intake", "--help"], home=home)
     assert r.code == 0 and "Usage: tourclaim intake" in r.stdout
+
+
+def test_mcp_release_metadata_and_examples_match_package_version():
+    import json
+    from pathlib import Path
+    root = Path(PYTHON_DIR).parent
+    if not (root / "server.json").exists():
+        pytest.skip("release files are in the repository, not the Python sdist")
+    manifest = json.loads((root / "server.json").read_text())
+    assert manifest["name"] == "io.github.tourclaim/tourclaim"
+    assert manifest["version"] == tourclaim.__version__
+    assert f"mcp-name: {manifest['name']}" in read("README.md")
+    package = manifest["packages"][0]
+    assert package["identifier"] == "tourclaim"
+    assert package["version"] == tourclaim.__version__
+    assert package["transport"] == {"type": "stdio"}
+    assert package["runtimeArguments"][-1]["value"] == f"tourclaim[mcp]=={tourclaim.__version__}"
+    for file in (root / "examples").glob("*mcp*.json"):
+        example = json.loads(file.read_text())
+        server = example.get("servers", example.get("mcpServers"))["tourclaim"]
+        assert server["command"] == "uvx"
+        assert server["args"] == ["--python", "3.12", "--from", f"tourclaim[mcp]=={tourclaim.__version__}", "tourclaim", "mcp"]
+    assert json.loads((root / "package.json").read_text())["version"] == tourclaim.__version__

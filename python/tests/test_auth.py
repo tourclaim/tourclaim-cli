@@ -8,9 +8,10 @@ import pytest
 from conftest import IS_WINDOWS, creds_file, run_cli, save_key, store_for
 from mock_server import MockServer
 
+from tourclaim import __version__
 from tourclaim.credentials import credentials_path
 
-UA = re.compile(r"^tourclaim-py/0\.1\.0 \(\w+ x86_64; python 3\.12\.0\)$")
+UA = re.compile(rf"^tourclaim-py/{re.escape(__version__)} \(\w+ x86_64; python 3\.12\.0\)$")
 
 
 @pytest.fixture(autouse=True)

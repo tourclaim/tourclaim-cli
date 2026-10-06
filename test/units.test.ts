@@ -1,3 +1,4 @@
+import { VERSION } from "../src/version.js";
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { CONFLICT_CODES, conflictCode, describeErrorBody, retryAfterSeconds, sentences } from "../src/api.js";
@@ -145,7 +146,7 @@ describe("config", () => {
   });
 
   it("builds the User-Agent", () => {
-    assert.equal(userAgent("darwin", "arm64", "22.4.0"), "tourclaim-cli/0.1.0 (darwin arm64; node 22.4.0)");
+    assert.equal(userAgent("darwin", "arm64", "22.4.0"), `tourclaim-cli/${VERSION} (darwin arm64; node 22.4.0)`);
   });
 });
 

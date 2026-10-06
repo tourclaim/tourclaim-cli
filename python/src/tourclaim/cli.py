@@ -1337,9 +1337,31 @@ def run_intake_submit(ctx: Context, args: Args) -> int:
     return ExitCode.OK
 
 
+def run_mcp(ctx: Context, args: Args) -> None:
+    if sys.version_info < (3, 10):
+        raise UsageError("MCP requires Python 3.10 or newer. The CLI and SDK still support Python 3.9.")
+    try:
+        import mcp  # noqa: F401 - optional; the ordinary CLI stays dependency-free
+    except ImportError:
+        raise UsageError('MCP support is optional. Install it with: pip install "tourclaim[mcp]"') from None
+    from .mcp import serve
+
+    serve(ctx.api_url)
+
+
 # ---- the command table ----
 
 COMMANDS: List[Command] = [
+    Command(
+        path=["mcp"],
+        summary="Run the optional MCP server over stdio (Python edition)",
+        usage="tourclaim mcp [--api-url <url>]",
+        description='Requires Python 3.10+ and pip install "tourclaim[mcp]". Launch from an MCP host. '
+                    'Uses the same traveler credentials as tourclaim login. Stdout carries only MCP messages. '
+                    'The traveler signs in and signs claims in their own browser; the server never signs.',
+        max_args=0,
+        run=run_mcp,
+    ),
     Command(
         path=["login"],
         summary="Connect this computer to a traveler's TourClaim account",
