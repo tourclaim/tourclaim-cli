@@ -1645,7 +1645,7 @@ COMMANDS: List[Command] = [
             [
                 f"Fetches the full schema the CLI uses, {API_PREFIX}/openapi-cli.json, and prints it: indented by default, one line",
                 f"with --json. No sign-in needed. From a server that does not have it yet, it prints {API_PREFIX}/openapi.json.",
-                f"{API_PREFIX}/openapi.json itself lists only the ten operations assistants load as tools.",
+                f"{API_PREFIX}/openapi.json itself lists only the eleven operations assistants load as tools.",
             ]
         ),
         max_args=0,

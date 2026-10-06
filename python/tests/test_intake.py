@@ -879,4 +879,4 @@ def test_the_assistant_schema_leaves_out_the_cli_only_operations(mock):
         assistant = json.loads(response.read().decode("utf-8"))
     assert "get" not in assistant["paths"]["/api/connectors/v1/intakes"]
     assert "/api/connectors/v1/key" not in assistant["paths"]
-    assert sum(len(ops) for ops in assistant["paths"].values()) == 10
+    assert sum(len(ops) for ops in assistant["paths"].values()) == 11

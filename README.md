@@ -199,7 +199,7 @@ Shows a claim's status, the next action in words to pass on to the traveler, and
 
 ### `tourclaim schema`
 
-Prints the live OpenAPI document with every operation the CLI uses, from `/api/connectors/v1/openapi-cli.json`; from a server that does not have it yet, it prints `/api/connectors/v1/openapi.json` instead. No sign-in needed. `/api/connectors/v1/openapi.json` itself lists only the ten operations assistants load as tools; it leaves out the drafts list and the key endpoints, which still work for any key. A copy of the full schema this version was built against is in [openapi/connectors-v1.json](openapi/connectors-v1.json).
+Prints the live OpenAPI document with every operation the CLI uses, from `/api/connectors/v1/openapi-cli.json`; from a server that does not have it yet, it prints `/api/connectors/v1/openapi.json` instead. No sign-in needed. `/api/connectors/v1/openapi.json` itself lists only the eleven operations assistants load as tools; it leaves out the drafts list and the key endpoints, which still work for any key. A copy of the full schema this version was built against is in [openapi/connectors-v1.json](openapi/connectors-v1.json).
 
 ## Draft states
 

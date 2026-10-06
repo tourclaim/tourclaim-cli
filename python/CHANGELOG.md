@@ -14,3 +14,4 @@ First version of the Python edition. Its commands, flags, JSON output, exit code
 - Credentials stored per API URL in the same file and format as the Node edition, with mode 0600 in a 0700 directory (`%APPDATA%\tourclaim` on Windows); `TOURCLAIM_API_KEY` and `TOURCLAIM_API_URL` overrides; a warning when the key expires within 3 days.
 - Consent prompts (or `--yes`) before any evidence is shared, attachment types detected from file contents, and `.eml` parsing with the standard library.
 - One automatic retry after a rate limit, honoring `Retry-After` up to 60 seconds. No runtime dependencies; Python 3.9 or newer.
+- `Client.request_data_deletion()`: asks TourClaim to delete the traveler's data; nothing is deleted until they confirm from the email TourClaim sends.

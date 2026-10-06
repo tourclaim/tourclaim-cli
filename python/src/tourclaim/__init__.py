@@ -61,6 +61,7 @@ from .models import (  # noqa: E402
     EvidenceSummary,
     IntakeFields,
     IntakeResponse,
+    DataDeletion,
     KeyInfo,
     MedicalAnswers,
 )
@@ -114,6 +115,7 @@ __all__ = [
     "EvidenceSummary",
     "IntakeFields",
     "IntakeResponse",
+    "DataDeletion",
     "KeyInfo",
     "MedicalAnswers",
 ]

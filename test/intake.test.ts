@@ -860,7 +860,7 @@ describe("intake and claims", () => {
       assert.equal(assistant.paths["/api/connectors/v1/intakes"]?.get, undefined);
       assert.equal(assistant.paths["/api/connectors/v1/key"], undefined);
       const operations = Object.values(assistant.paths).flatMap((ops) => Object.keys(ops));
-      assert.equal(operations.length, 10);
+      assert.equal(operations.length, 11);
     });
   });
 });

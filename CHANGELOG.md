@@ -20,3 +20,4 @@ First release. The TourClaim connector API runs in review mode: claims are synth
 - Releases publish to npm from GitHub Actions with provenance through npm trusted publishing.
 
 [0.1.0]: https://github.com/tourclaim/tourclaim-cli/releases/tag/v0.1.0
+- The schema snapshot matches production 1.57.8: the assistants' schema lists eleven operations, adding `request_data_deletion`.

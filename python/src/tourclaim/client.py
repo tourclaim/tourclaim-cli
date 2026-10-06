@@ -68,6 +68,7 @@ from .models import (
     CardResponse,
     ClaimResponse,
     ConnectorInfo,
+    DataDeletion,
     DeviceCode,
     DeviceToken,
     IntakeFields,
@@ -131,7 +132,7 @@ def sentences(*parts: Optional[str]) -> str:
 
 #: Every operation, including the drafts list and the key endpoints the CLI uses.
 CLI_SCHEMA_PATH = f"{API_PREFIX}/openapi-cli.json"
-#: The ten operations assistants load as tools; servers before 1.57.1 serve everything here.
+#: The eleven operations assistants load as tools; servers before 1.57.1 serve everything here.
 ASSISTANT_SCHEMA_PATH = f"{API_PREFIX}/openapi.json"
 
 #: Statuses that mean "try again shortly": a gateway timeout or error at the
@@ -479,7 +480,7 @@ class Client:
         """The live OpenAPI document with every operation, as the CLI uses them
         (``/api/connectors/v1/openapi-cli.json``). A server that does not have it
         yet (before 1.57.1) answers 404, and then ``/openapi.json`` is returned
-        instead. ``/openapi.json`` itself lists only the ten operations assistants
+        instead. ``/openapi.json`` itself lists only the eleven operations assistants
         load as tools. No key needed."""
         try:
             return self.request("GET", CLI_SCHEMA_PATH, auth=False).data
@@ -497,6 +498,17 @@ class Client:
     def disconnect(self) -> None:
         """``disconnect``: revokes the key making the request, at once."""
         self.request("DELETE", f"{API_PREFIX}/key")
+
+    def request_data_deletion(self) -> DataDeletion:
+        """``request_data_deletion``: asks TourClaim to delete the traveler's data.
+
+        Call it only when the traveler asks. It deletes nothing itself: TourClaim
+        emails a confirmation link to the account's address, and deletion happens
+        only when the traveler confirms in their browser. Safe to repeat while a
+        request waits. Needs a full-access key; a read-only key gets
+        :class:`PermissionDeniedError`.
+        """
+        return self.request("POST", f"{API_PREFIX}/data-deletion", body={"traveler_requested": True}).data
 
     # ---- cards ----
 

@@ -129,6 +129,11 @@ def test_full_claim_through_the_library(client, mock):
     assert caught.value.status == 401 and caught.value.code == "unauthorized" and caught.value.exit_code == 3
 
 
+def test_a_data_deletion_request_deletes_nothing_and_waits_for_the_traveler(client):
+    asked = client.request_data_deletion()
+    assert asked["status"] == "awaiting_confirmation" and asked["email_sent"] is True
+
+
 def test_discovery_and_schema_need_no_key(mock):
     c = Client(api_url=mock.url, load_credentials=False)
     assert c.connector_info()["cli_login_url"] == f"{mock.url}/connect/cli"

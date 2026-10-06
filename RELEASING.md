@@ -31,14 +31,14 @@ npm only allows trusted publishing for a package that already exists, so the fir
 
 ## The schema snapshot
 
-`openapi/connectors-v1.json` is a copy of the full schema the CLI uses, served at `/api/connectors/v1/openapi-cli.json` (`/api/connectors/v1/openapi.json` lists only the ten operations assistants load as tools). The types, the field tables and the test mock are checked against it. Refresh it after a server deploy that changes the API, then run the tests:
+`openapi/connectors-v1.json` is a copy of the full schema the CLI uses, served at `/api/connectors/v1/openapi-cli.json` (`/api/connectors/v1/openapi.json` lists only the eleven operations assistants load as tools). The types, the field tables and the test mock are checked against it. Refresh it after a server deploy that changes the API, then run the tests:
 
 ```sh
 node dist/cli.js schema --api-url https://app.getcopernican.com > openapi/connectors-v1.json
 npm test
 ```
 
-The current copy was taken from production (server 1.57.6) on 2026-10-05.
+The current copy was taken from production (server 1.57.8) on 2026-10-06.
 
 ## Every later release
 

@@ -433,6 +433,16 @@ class MockServer:
         if v1 == "/key" and method == "DELETE":
             key.revoked = True
             return None
+        if v1 == "/data-deletion" and method == "POST":
+            # Asking deletes nothing: the server emails the traveler a link to confirm.
+            self._scope(key, "intakes:write")
+            if not isinstance(r.body, dict) or r.body.get("traveler_requested") is not True:
+                raise invalid([issue(["body", "traveler_requested"], "literal_error")])
+            return {
+                "mode": "review", "id": "del-1", "status": "awaiting_confirmation", "email_sent": True,
+                "expires_at": "2026-10-07T00:00:00Z", "next_action": "Tell the traveler to confirm from the email.",
+                "deleted_on_confirmation": [], "handled_by_staff": [],
+            }
         if v1 == "/cards" and method == "GET":
             self._scope(key, "intakes:write")
             q = r.q("q") or ""

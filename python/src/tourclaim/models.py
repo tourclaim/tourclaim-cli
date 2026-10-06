@@ -2,7 +2,7 @@
 
 Written by hand from ``openapi/connectors-v1.json``, a snapshot of the full
 schema the CLI uses, served at ``/api/connectors/v1/openapi-cli.json``
-(``/api/connectors/v1/openapi.json`` lists only the ten operations assistants
+(``/api/connectors/v1/openapi.json`` lists only the eleven operations assistants
 load as tools). Responses are returned as plain ``dict``
 objects; these types describe them for editors and type checkers. The device
 authorization endpoints (``/api/connectors/device/*``) are not part of that
@@ -134,6 +134,25 @@ class KeyInfo(_KeyInfoRequired, total=False):
     account_email: Optional[str]
 
 
+class _DataDeletionRequired(TypedDict):
+    id: str
+    status: Literal["awaiting_confirmation"]
+    email_sent: bool
+    expires_at: str
+    next_action: str
+
+
+class DataDeletion(_DataDeletionRequired, total=False):
+    """``POST /api/connectors/v1/data-deletion``: a request to delete the traveler's
+    data. Nothing is deleted until the traveler confirms from the email TourClaim sends."""
+
+    mode: str
+    email_sent_at: Optional[str]
+    resend_available_at: Optional[str]
+    deleted_on_confirmation: List[str]
+    handled_by_staff: List[str]
+
+
 class _ConnectorInfoRequired(TypedDict):
     name: str
     version: str
@@ -146,7 +165,7 @@ class _ConnectorInfoRequired(TypedDict):
 
 class ConnectorInfo(_ConnectorInfoRequired, total=False):
     """``GET /api/connectors/v1``. URLs are absolute (older servers sent paths).
-    ``openapi_url`` lists the ten operations assistants load as tools;
+    ``openapi_url`` lists the eleven operations assistants load as tools;
     ``cli_openapi_url`` (servers from 1.57.1) lists every operation."""
 
     cli_openapi_url: str

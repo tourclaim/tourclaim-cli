@@ -58,7 +58,7 @@ tourclaim claims show <claim-id> --json
 
 ## Other ways in
 
-If your framework loads OpenAPI tools, use the schema at `/api/connectors/v1/openapi.json`: the ten operations reviewed for assistants. `tourclaim schema` prints the fuller schema the CLI uses (`/api/connectors/v1/openapi-cli.json`, which adds the drafts list and the key endpoints). The same rules apply either way. This CLI is for agents that run shell commands; it adds sign-in, safe key storage, consent prompts and file handling on top of the API.
+If your framework loads OpenAPI tools, use the schema at `/api/connectors/v1/openapi.json`: the eleven operations reviewed for assistants. `tourclaim schema` prints the fuller schema the CLI uses (`/api/connectors/v1/openapi-cli.json`, which adds the drafts list and the key endpoints). The same rules apply either way. This CLI is for agents that run shell commands; it adds sign-in, safe key storage, consent prompts and file handling on top of the API.
 
 ## Python edition
 

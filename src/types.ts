@@ -3,7 +3,7 @@
  *
  * Written by hand from openapi/connectors-v1.json, a snapshot of the full
  * schema the CLI uses, served at /api/connectors/v1/openapi-cli.json
- * (/api/connectors/v1/openapi.json lists only the ten operations assistants
+ * (/api/connectors/v1/openapi.json lists only the eleven operations assistants
  * load as tools). test/meta.test.ts checks that the field
  * tables in fields.ts and the enums here still match that file. The device
  * authorization endpoints (/api/connectors/device/*) are not part of that
@@ -152,7 +152,7 @@ export interface ConnectorInfo {
   version: string;
   enabled: boolean;
   mode: Mode;
-  /** The ten operations assistants load as tools. */
+  /** The eleven operations assistants load as tools. */
   openapi_url: string;
   /** Every operation, as the CLI uses them (servers from 1.57.1). */
   cli_openapi_url?: string;

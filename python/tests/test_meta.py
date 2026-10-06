@@ -110,6 +110,7 @@ def test_every_operation_has_a_client_method():
         "get_my_claim_status": "get_claim",
         "get_connection": "get_connection",
         "disconnect": "disconnect",
+        "request_data_deletion": "request_data_deletion",
     }
     operations = {op["operationId"] for path in OPENAPI["paths"].values() for op in path.values()}
     assert operations == set(methods), "a new API operation needs a client method"

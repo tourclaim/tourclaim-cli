@@ -4,7 +4,7 @@ import { ExitCode } from "../errors.js";
 
 /** Every operation, including the drafts list and the key endpoints the CLI uses. */
 export const CLI_SCHEMA_PATH = `${API_PREFIX}/openapi-cli.json`;
-/** The ten operations assistants load as tools; servers before 1.57.1 serve everything here. */
+/** The eleven operations assistants load as tools; servers before 1.57.1 serve everything here. */
 export const ASSISTANT_SCHEMA_PATH = `${API_PREFIX}/openapi.json`;
 
 export const schema: Command = {
@@ -14,7 +14,7 @@ export const schema: Command = {
   description: [
     `Fetches the full schema the CLI uses, ${CLI_SCHEMA_PATH}, and prints it: indented by default, one line`,
     `with --json. No sign-in needed. From a server that does not have it yet, it prints ${ASSISTANT_SCHEMA_PATH}.`,
-    `${ASSISTANT_SCHEMA_PATH} itself lists only the ten operations assistants load as tools.`,
+    `${ASSISTANT_SCHEMA_PATH} itself lists only the eleven operations assistants load as tools.`,
   ].join("\n"),
   maxArgs: 0,
   async run(ctx) {
