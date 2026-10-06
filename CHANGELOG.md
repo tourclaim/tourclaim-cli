@@ -2,6 +2,14 @@
 
 All notable changes to this project are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-10-05
+
+### Changed
+
+- Package descriptions and READMEs explain TourClaim for developers, agents, platforms, and travelers without an operator referral or a particular assistant.
+- Added links to the platform-neutral traveler and developer pages, explained the handoff from saved intake and selected evidence to traveler authorization, and retained the synthetic-review disclosure.
+- Runtime commands, SDK behavior, authentication, credential formats, and consent requirements are unchanged.
+
 ## [0.1.0] - 2026-10-04
 
 First release. The TourClaim connector API runs in review mode: claims are synthetic and nothing is filed.

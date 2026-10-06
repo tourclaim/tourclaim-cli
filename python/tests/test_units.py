@@ -179,8 +179,8 @@ def test_prefers_flag_then_environment_then_default():
 
 
 def test_builds_the_user_agent():
-    assert user_agent("darwin", "arm64", "3.12.4") == "tourclaim-py/0.1.0 (darwin arm64; python 3.12.4)"
-    assert user_agent().startswith("tourclaim-py/0.1.0 (")
+    assert user_agent("darwin", "arm64", "3.12.4") == "tourclaim-py/0.1.1 (darwin arm64; python 3.12.4)"
+    assert user_agent().startswith("tourclaim-py/0.1.1 (")
 
 
 # ---- api helpers ----

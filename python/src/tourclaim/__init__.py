@@ -14,7 +14,7 @@ The traveler signs the claim authorization themselves, in their own browser
 at the draft's ``review_url``; this package cannot sign for them.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .client import API_PREFIX, Client, Response, derive_message_id  # noqa: E402
 from .credentials import CredentialStore, StoredCredential, credentials_path  # noqa: E402

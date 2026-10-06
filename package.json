@@ -1,6 +1,6 @@
 {
   "name": "tourclaim",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Travel-claim CLI for developers, travelers, and AI agents: saved intake, selected evidence, traveler authorization, and claim status with TourClaim by Copernican.",
   "keywords": [
     "tourclaim",
