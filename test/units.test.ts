@@ -145,7 +145,7 @@ describe("config", () => {
   });
 
   it("builds the User-Agent", () => {
-    assert.equal(userAgent("darwin", "arm64", "22.4.0"), "tourclaim-cli/0.1.0 (darwin arm64; node 22.4.0)");
+    assert.equal(userAgent("darwin", "arm64", "22.4.0"), "tourclaim-cli/0.1.1 (darwin arm64; node 22.4.0)");
   });
 });
 

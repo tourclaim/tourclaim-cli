@@ -10,7 +10,7 @@ from mock_server import MockServer
 
 from tourclaim.credentials import credentials_path
 
-UA = re.compile(r"^tourclaim-py/0\.1\.0 \(\w+ x86_64; python 3\.12\.0\)$")
+UA = re.compile(r"^tourclaim-py/0\.1\.1 \(\w+ x86_64; python 3\.12\.0\)$")
 
 
 @pytest.fixture(autouse=True)
