@@ -1,5 +1,7 @@
 # tourclaim
 
+Python CLI, SDK and MCP server for credit-card travel insurance claims, with a companion Node CLI.
+
 Command-line client for [TourClaim by Copernican](https://www.getcopernican.com/travelers). Give your app, assistant, or terminal a travel-claim workflow: save a traveler’s answers, collect the evidence they choose to share, hand them the authorization to sign, and follow their claim. Works with any assistant that can run shell commands or call the API; no enrolled tour operator or booking-platform integration is required.
 
 > **Review mode.** The TourClaim connector API currently runs in review mode: it creates synthetic claims and files nothing with an insurer. Use fictional booking and medical data only. `tourclaim status` shows the current mode, and every intake and claim the API returns says which mode it came from.
@@ -32,18 +34,32 @@ For AI agents, read [AGENTS.md](AGENTS.md) before driving this tool.
 
 ## Install
 
-Requires Node.js 18.3 or newer. There are no runtime dependencies.
+The published Python CLI and SDK require Python 3.9+. The ordinary CLI has no runtime dependencies.
 
 ```sh
-npx tourclaim --help
-```
-
-or install it:
-
-```sh
-npm install -g tourclaim
+pip install tourclaim
 tourclaim --help
+# Or: uvx tourclaim --help
 ```
+
+See [python/README.md](python/README.md) for the library and [CONTRIBUTING.md](CONTRIBUTING.md) for building the Node edition from source. The Node edition requires Node.js 18.3+; its package is released separately on npm by the release workflow.
+
+## MCP for AI assistants
+
+TourClaim includes a local MCP server with 17 tools, browser sign-in, and the same traveler consent and signing requirements as the CLI. Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then add this to a client that uses `mcpServers`:
+
+```json
+{
+  "mcpServers": {
+    "tourclaim": {
+      "command": "uvx",
+      "args": ["--python", "3.12", "--from", "tourclaim[mcp]==0.2.0", "tourclaim", "mcp"]
+    }
+  }
+}
+```
+
+See [MCP.md](MCP.md) for all tools, VS Code/Copilot configuration, authentication, and limitations. The official registry identity is `io.github.tourclaim/tourclaim`; [server.json](server.json) is published by the release workflow after PyPI succeeds. The service remains in **synthetic review mode**.
 
 ## Quickstart
 

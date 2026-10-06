@@ -2,6 +2,17 @@
 
 All notable changes to the Python edition of tourclaim are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-10-05
+
+### Added
+
+- Optional Python MCP server: `pip install 'tourclaim[mcp]'` then `tourclaim mcp` (Python 3.10+). Seventeen tools reuse the existing client, including browser sign-in, all 14 connector operations, and public service discovery.
+- Consent validation, structured results, credential redaction, and human-only signing in the MCP adapter. The service remains in synthetic review mode.
+- Public MCP setup examples, agent discovery links, and an official MCP Registry manifest. The release workflow publishes the registry entry after the Python package succeeds.
+- MCP protocol and claim-flow tests, including older clients, expired login codes, throttling, stale revisions, and local credential-save failures.
+
+The ordinary Python CLI and library keep their Python 3.9+ support and zero runtime dependencies. The Node CLI keeps its existing command set; MCP runs through the Python edition.
+
 ## [0.1.1] - 2026-10-05
 
 ### Changed

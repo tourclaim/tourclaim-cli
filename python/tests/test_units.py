@@ -6,6 +6,7 @@ from email.utils import format_datetime
 import pytest
 
 from tourclaim.client import conflict_code, describe_error_body, retry_after_seconds, sentences
+from tourclaim import __version__
 from tourclaim.config import normalize_api_url, resolve_api_url, user_agent
 from tourclaim.eml import decode_header, parse_eml
 from tourclaim.errors import CONFLICT_CODES, APIError, TourClaimError, UsageError
@@ -179,8 +180,8 @@ def test_prefers_flag_then_environment_then_default():
 
 
 def test_builds_the_user_agent():
-    assert user_agent("darwin", "arm64", "3.12.4") == "tourclaim-py/0.1.1 (darwin arm64; python 3.12.4)"
-    assert user_agent().startswith("tourclaim-py/0.1.1 (")
+    assert user_agent("darwin", "arm64", "3.12.4") == f"tourclaim-py/{__version__} (darwin arm64; python 3.12.4)"
+    assert user_agent().startswith(f"tourclaim-py/{__version__} (")
 
 
 # ---- api helpers ----

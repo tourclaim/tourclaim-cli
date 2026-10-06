@@ -1,6 +1,6 @@
 {
   "name": "tourclaim",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Travel-claim CLI for developers, travelers, and AI agents: saved intake, selected evidence, traveler authorization, and claim status with TourClaim by Copernican.",
   "keywords": [
     "tourclaim",
@@ -36,7 +36,10 @@
     "AGENTS.md",
     "CHANGELOG.md",
     "SECURITY.md",
-    "LICENSE"
+    "LICENSE",
+    "MCP.md",
+    "server.json",
+    "llms.txt"
   ],
   "engines": {
     "node": ">=18.3"
