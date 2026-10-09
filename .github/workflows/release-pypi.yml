@@ -58,6 +58,16 @@ jobs:
           path: dist/
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 
+  verify:
+    name: Verify the PyPI package
+    needs: publish
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify-published.yml
+    with:
+      version: ${{ github.ref_name }}
+      registries: pypi
+
   registry:
     name: Publish to MCP Registry
     needs: publish
