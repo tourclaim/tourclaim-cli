@@ -38,3 +38,13 @@ jobs:
             exit 1
           fi
       - run: npm publish --provenance --access public
+
+  verify:
+    name: Verify the npm package
+    needs: publish
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify-published.yml
+    with:
+      version: ${{ github.ref_name }}
+      registries: npm
