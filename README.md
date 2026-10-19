@@ -44,6 +44,14 @@ tourclaim --help
 
 See [python/README.md](python/README.md) for the library and [CONTRIBUTING.md](CONTRIBUTING.md) for building the Node edition from source. The Node edition requires Node.js 18.3+; its package is released separately on npm by the release workflow.
 
+## Request production access
+
+Testing is self-service. Install the CLI and run `tourclaim login` to create a traveler connection. No approval is needed to test with fictional data in synthetic review mode.
+
+**Live access requires Copernican’s approval.** Complete the [integration request form](https://www.getcopernican.com/blog/connect-your-agent-to-tourclaim-api-mcp-cli/#request-access). Include your company or product, website, use case, expected volume, and intended launch date. Our team reviews requests and replies by email.
+
+Submitting a request or creating a test key does not enable live access. Each traveler must still authorize their own connection and sign their claim.
+
 ## MCP for AI assistants
 
 TourClaim includes a local MCP server with 17 tools, browser sign-in, and the same traveler consent and signing requirements as the CLI. Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then add this to a client that uses `mcpServers`:
