@@ -1,0 +1,227 @@
+name: Verify published packages
+
+# Installs a published version the way a developer would, from npm and PyPI,
+# with no checkout of this repository and an empty home directory, then runs it
+# against the live API without signing in. Release (npm) and Release to PyPI
+# call it after they publish; run it by hand to check any version.
+#
+# The logs are public: the steps print versions, help text, the API mode and a
+# count of the schema's operations. Nothing signs in and no secret is used.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version to check, with or without a leading v (0.2.0 or v0.2.0).
+        required: true
+        type: string
+      registries:
+        description: '"npm", "pypi" or "npm pypi".'
+        required: false
+        type: string
+        default: npm pypi
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to check, with or without a leading v (0.2.0 or v0.2.0).
+        required: true
+        type: string
+      registries:
+        description: Which registries to check.
+        required: false
+        type: choice
+        options: ["npm pypi", "npm", "pypi"]
+        default: npm pypi
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    name: npm on ${{ matrix.os }}, Node ${{ matrix.node }}
+    if: contains(inputs.registries, 'npm')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, node: 22 }
+          - { os: ubuntu-latest, node: 18 }
+          - { os: macos-latest, node: 22 }
+          - { os: windows-latest, node: 22 }
+    defaults:
+      run:
+        shell: bash
+    env:
+      INPUT_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Start from an empty directory and home
+        run: |
+          V="${INPUT_VERSION#v}"
+          if ! [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Not a version: $INPUT_VERSION" >&2
+            exit 1
+          fi
+          work="$RUNNER_TEMP/verify"
+          mkdir -p "$work/home"
+          echo "V=$V" >> "$GITHUB_ENV"
+          echo "WORK=$work" >> "$GITHUB_ENV"
+          # Windows keeps its home in USERPROFILE; the runner has no TourClaim
+          # credentials there either. Python on Windows ends lines with \r\n,
+          # so the version checks below strip \r.
+          if [ "$RUNNER_OS" != "Windows" ]; then echo "HOME=$work/home" >> "$GITHUB_ENV"; fi
+      - name: Wait for npm to list the version
+        run: |
+          cd "$WORK"
+          for i in $(seq 1 40); do
+            if [ "$(npm view "tourclaim@$V" version 2>/dev/null)" = "$V" ]; then
+              echo "npm lists tourclaim@$V"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::npm still does not list tourclaim@$V after 10 minutes" >&2
+          exit 1
+      - name: npx tourclaim --version
+        run: |
+          cd "$WORK"
+          out="$(npx -y "tourclaim@$V" --version | tr -d '\r')"
+          echo "$out"
+          [ "$out" = "$V" ]
+      - name: npm install -g tourclaim, then tourclaim --help
+        run: |
+          cd "$WORK"
+          npm install -g "tourclaim@$V" --no-audit --no-fund
+          [ "$(tourclaim --version | tr -d '\r')" = "$V" ]
+          tourclaim --help
+      - name: tourclaim status reaches the API without signing in
+        run: |
+          cd "$WORK"
+          set +e
+          tourclaim status
+          code=$?
+          tourclaim status --json > status.json
+          set -e
+          # 3 means "not signed in", the expected answer with no key.
+          if [ "$code" -ne 3 ]; then
+            echo "::error::tourclaim status exited $code, expected 3 (not signed in)" >&2
+            exit 1
+          fi
+          node -e '
+            const s = JSON.parse(require("fs").readFileSync("status.json", "utf8"));
+            if (!["review", "live"].includes(s.mode)) throw new Error("unexpected mode: " + s.mode);
+            if (s.signed_in !== false) throw new Error("signed_in should be false");
+            console.log("mode=" + s.mode + " enabled=" + s.enabled);
+          '
+      - name: tourclaim schema reads the live schema
+        run: |
+          cd "$WORK"
+          tourclaim schema --json > schema.json
+          node -e '
+            const s = JSON.parse(require("fs").readFileSync("schema.json", "utf8"));
+            const verbs = ["get", "post", "put", "patch", "delete"];
+            const ops = Object.values(s.paths || {}).reduce((n, p) => n + verbs.filter((v) => p[v]).length, 0);
+            if (ops < 1) throw new Error("the schema lists no operations");
+            console.log("operations=" + ops);
+          '
+
+  pypi:
+    name: PyPI on ${{ matrix.os }}, Python ${{ matrix.python }}
+    if: contains(inputs.registries, 'pypi')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, python: "3.13" }
+          - { os: ubuntu-latest, python: "3.9" }
+          - { os: macos-latest, python: "3.13" }
+          - { os: windows-latest, python: "3.13" }
+    defaults:
+      run:
+        shell: bash
+    env:
+      INPUT_VERSION: ${{ inputs.version }}
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+      PIP_NO_CACHE_DIR: "1"
+    steps:
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Start from an empty directory and home
+        run: |
+          V="${INPUT_VERSION#v}"
+          if ! [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+.][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Not a version: $INPUT_VERSION" >&2
+            exit 1
+          fi
+          work="$RUNNER_TEMP/verify"
+          mkdir -p "$work/home" "$work/download"
+          echo "V=$V" >> "$GITHUB_ENV"
+          echo "WORK=$work" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" != "Windows" ]; then echo "HOME=$work/home" >> "$GITHUB_ENV"; fi
+      - name: Wait for pip to find the version
+        run: |
+          cd "$WORK"
+          for i in $(seq 1 40); do
+            if python -m pip download --quiet --no-deps -d download "tourclaim==$V" 2>/dev/null; then
+              echo "pip finds tourclaim==$V"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::pip still cannot find tourclaim==$V after 10 minutes" >&2
+          exit 1
+      - name: pip install tourclaim, then tourclaim --help
+        run: |
+          cd "$WORK"
+          python -m pip install "tourclaim==$V"
+          [ "$(tourclaim --version | tr -d '\r')" = "$V" ]
+          tourclaim --help
+      - name: tourclaim status reaches the API without signing in
+        run: |
+          cd "$WORK"
+          set +e
+          tourclaim status
+          code=$?
+          tourclaim status --json > status.json
+          set -e
+          if [ "$code" -ne 3 ]; then
+            echo "::error::tourclaim status exited $code, expected 3 (not signed in)" >&2
+            exit 1
+          fi
+          python -c '
+          import json
+          s = json.load(open("status.json"))
+          assert s["mode"] in ("review", "live"), "unexpected mode: %r" % s["mode"]
+          assert s["signed_in"] is False, "signed_in should be false"
+          print("mode=%s enabled=%s" % (s["mode"], s["enabled"]))
+          '
+      - name: tourclaim schema reads the live schema
+        run: |
+          cd "$WORK"
+          tourclaim schema --json > schema.json
+          python -c '
+          import json
+          s = json.load(open("schema.json"))
+          ops = sum(1 for p in s.get("paths", {}).values() for v in ("get", "post", "put", "patch", "delete") if v in p)
+          assert ops >= 1, "the schema lists no operations"
+          print("operations=%d" % ops)
+          '
+      - name: uvx tourclaim --help
+        run: |
+          cd "$WORK"
+          python -m pip install --quiet uv
+          [ "$(uvx --from "tourclaim==$V" tourclaim --version | tr -d '\r')" = "$V" ]
+          uvx --from "tourclaim==$V" tourclaim --help
+      - name: pipx run tourclaim --help
+        run: |
+          cd "$WORK"
+          python -m pip install --quiet pipx
+          [ "$(python -m pipx run --spec "tourclaim==$V" tourclaim --version | tr -d '\r')" = "$V" ]
+          python -m pipx run --spec "tourclaim==$V" tourclaim --help

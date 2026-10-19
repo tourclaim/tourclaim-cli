@@ -31,6 +31,8 @@ describe("package", () => {
     for (const name of readdirSync(join(ROOT, ".github", "workflows"))) {
       const text = readFileSync(join(ROOT, ".github", "workflows", name), "utf8");
       for (const match of text.matchAll(/uses:\s*(\S+)/g)) {
+        // A reusable workflow in this repository runs from the same commit, so it needs no SHA.
+        if (/^\.\/\.github\/workflows\/[\w.-]+\.ya?ml$/.test(match[1] ?? "")) continue;
         assert.match(match[1] ?? "", /^[\w.-]+\/[\w.-]+@[0-9a-f]{40}$/, `${name}: ${match[1]}`);
       }
       assert.match(text, /^permissions:\n  contents: read$/m, `${name} sets read-only permissions at the top`);

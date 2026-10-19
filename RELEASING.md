@@ -53,5 +53,6 @@ The current copy was taken from production (server 1.57.8) on 2026-10-06.
    `npm version` updates `package.json`, `package-lock.json` and `src/version.ts`, then commits and tags `vX.Y.Z`.
 
 3. The [Release workflow](.github/workflows/release.yml) runs the tests, checks that the tag equals the `package.json` version, and publishes with provenance through npm trusted publishing. No npm token is stored in the repository.
+4. After publishing, both release workflows run [Verify published packages](.github/workflows/verify-published.yml): it installs the new version from npm and PyPI on Linux, macOS and Windows, with no checkout and an empty home, and runs `--version`, `--help`, `status` and `schema` against the live API without signing in (`npx`, `npm install -g`, `pip install`, `uvx` and `pipx run`). Run it by hand from the Actions tab to check any version.
 
 If the workflow fails before `npm publish`, fix the problem, delete the tag (`git push --delete origin vX.Y.Z` and `git tag -d vX.Y.Z`) and tag again. A published version cannot be replaced; release a new one.
