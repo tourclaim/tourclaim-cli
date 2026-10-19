@@ -220,6 +220,12 @@ jobs:
           [ "$(uvx --from "tourclaim==$V" tourclaim --version | tr -d '\r')" = "$V" ]
           uvx --from "tourclaim==$V" tourclaim --help
       - name: pipx run tourclaim --help
+        # Hosted runners set PIPX_HOME independently of HOME. Start fresh so
+        # shared pip libraries match this job's Python, including Python 3.9.
+        env:
+          PIPX_HOME: ${{ runner.temp }}/verify/pipx
+          PIPX_BIN_DIR: ${{ runner.temp }}/verify/pipx-bin
+          PIPX_SHARED_LIBS: ${{ runner.temp }}/verify/pipx-shared
         run: |
           cd "$WORK"
           python -m pip install --quiet pipx
