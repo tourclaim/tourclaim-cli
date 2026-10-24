@@ -12,12 +12,10 @@ permissions:
   contents: read
 
 jobs:
-  publish:
-    name: Publish to npm
+  build:
+    name: Test and pack
+    # No OIDC token here: npm ci and the tests run where nothing can publish.
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -25,9 +23,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
-      - name: Install an npm with trusted publishing (11.5.1 or newer)
-        run: npm install -g npm@latest
       - run: npm ci
       - run: npm test
       - name: Check the tag matches package.json
@@ -37,14 +32,39 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match package.json version $version." >&2
             exit 1
           fi
-      - run: npm publish --provenance --access public
+      - run: mkdir npm-package && npm pack --pack-destination npm-package
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-package
+          path: npm-package/
+          if-no-files-found: error
 
-  verify:
-    name: Verify the npm package
-    needs: publish
+  publish:
+    name: Stage on npm
+    needs: build
+    runs-on: ubuntu-latest
+    # The trusted publisher on npmjs.com names this environment and allows
+    # `npm stage publish` only, so this job cannot publish: the version goes
+    # live when a maintainer approves it on npmjs.com with 2FA (Staged
+    # Packages), which no GitHub credential can do. RELEASING.md.
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/tourclaim
     permissions:
       contents: read
-    uses: ./.github/workflows/verify-published.yml
-    with:
-      version: ${{ github.ref_name }}
-      registries: npm
+      id-token: write
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Install an npm with staged publishing (11.15.0 or newer), pinned
+        run: npm install -g npm@11.21.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-package
+          path: npm-package/
+      # The tarball the build job tested and packed; nothing is installed or
+      # built here, beside the token. Verify published packages is run manually
+      # after approval: until then the version is not on npm.
+      - run: npm stage publish "npm-package/tourclaim-${GITHUB_REF_NAME#v}.tgz" --provenance --access public

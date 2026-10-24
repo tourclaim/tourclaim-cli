@@ -25,6 +25,12 @@ Examples of what we want to hear about:
 - a way to make the tool sign, or appear to sign, on the traveler's behalf;
 - unsafe handling of URLs, files or `.eml` input.
 
+## How releases are made
+
+- **npm:** GitHub Actions builds and tests each version, then stages it with a provenance attestation. It goes live only after a maintainer approves it on npmjs.com with two-factor authentication. In a project that depends on `tourclaim`, `npm audit signatures` checks the attestation. Earlier npm versions were published without one.
+- **PyPI:** GitHub Actions builds the sdist and wheel with hash-pinned tools and publishes them through trusted publishing after a maintainer approves the release. Each file carries a PyPI attestation from this repository's release workflow.
+- No npm or PyPI token is stored in this repository. The steps are in [RELEASING.md](RELEASING.md) and [python/RELEASING.md](python/RELEASING.md).
+
 ## Supported versions
 
 Fixes are released for the latest published version.

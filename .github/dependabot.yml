@@ -1,15 +1,29 @@
 version: 2
+# A seven-day cooldown on version updates, so new releases have time to be
+# vetted before this repository adopts them. Security updates are not delayed.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     ignore:
       # @types/node tracks the oldest supported Node (18), so the types never
       # offer an API that Node lacks. Raise it only with engines.node.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
+  # The Python edition: the hash-pinned build tools (build-requirements.txt)
+  # and the pinned MCP extra in pyproject.toml.
+  - package-ecosystem: pip
+    directory: /python
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
