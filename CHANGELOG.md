@@ -2,7 +2,11 @@
 
 All notable changes to this project are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.1] - 2026-10-24
+
+### Added
+
+- README: how to request production access.
 
 ### Changed
 
