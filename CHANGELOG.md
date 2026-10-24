@@ -2,6 +2,12 @@
 
 All notable changes to this project are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Releases: GitHub Actions now stages each npm version with a provenance attestation, and it goes live only after a maintainer approves it on npmjs.com with two-factor authentication. Earlier npm versions were published without one.
+
 ## [0.2.0] - 2026-10-05
 
 ### Added

@@ -2,6 +2,12 @@
 
 All notable changes to the Python edition of tourclaim are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Releases: the sdist and wheel are built in a job of their own, with only hash-pinned build tools installed; the tests and the MCP extra run on another runner. Publishing is unchanged: trusted publishing after a maintainer's approval, with PyPI attestations.
+
 ## [0.2.0] - 2026-10-05
 
 ### Added

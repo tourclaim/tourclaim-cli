@@ -31,7 +31,7 @@ The package already exists on PyPI. The following settings document how its trus
    git push origin v0.2.0
    ```
 
-The workflow then runs the Python tests, checks that the tag (without its `v`) equals `tourclaim.__version__`, builds the sdist and wheel with `python -m build`, checks them with `twine check`, and publishes them from the `pypi` environment. A tag that does not match the version fails before anything is published. PyPI never accepts the same version twice, so a broken release is fixed with a new version, not a re-upload.
+The workflow builds the sdist and wheel with `python -m build` in a job of their own, where nothing is installed but the build tools in `build-requirements.txt`, pinned by hash. Then, on another runner, it runs the Python tests, checks that the tag (without its `v`) equals `tourclaim.__version__` and checks the built files with `twine check`, then publishes them from the `pypi` environment. The test and MCP dependencies never run where the files are built. To change a build tool, update `build-requirements.txt` with every file's hash from PyPI (Dependabot does this). A tag that does not match the version fails before anything is published. PyPI never accepts the same version twice, so a broken release is fixed with a new version, not a re-upload.
 
 ## Checking a build locally
 

@@ -97,3 +97,40 @@ jobs:
         run: |
           python scripts/build-mcp-schema.py
           git diff --exit-code -- python/src/tourclaim/mcp_tools.json
+
+  release-build:
+    name: Python release build (pinned tools)
+    # The release's build job, step for step, so a build-requirements.txt that
+    # no longer resolves or builds fails here and not on a version tag.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - run: |
+          python -m pip install --require-hashes --only-binary :all: -r python/build-requirements.txt
+      - run: python -m build --no-isolation python
+      - name: Check the distributions
+        run: |
+          python -m pip install twine
+          python -m twine check --strict python/dist/*
+
+  workflows:
+    name: Workflow syntax
+    # The release workflows run only on a version tag, so a mistake in one
+    # would otherwise first show up mid-release.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install actionlint, checked by hash
+        run: |
+          curl --fail --show-error --location --output actionlint.tar.gz https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz" | sha256sum --check
+          tar xzf actionlint.tar.gz actionlint
+      # Syntax, expressions, job wiring and permissions; not shell style.
+      - run: ./actionlint -shellcheck= -pyflakes=
