@@ -58,13 +58,13 @@ With [uv](https://docs.astral.sh/uv/getting-started/installation/) installed, ad
   "mcpServers": {
     "tourclaim": {
       "command": "uvx",
-      "args": ["--python", "3.12", "--from", "tourclaim[mcp]==0.2.0", "tourclaim", "mcp"]
+      "args": ["--python", "3.12", "--from", "tourclaim[mcp]==0.2.1", "tourclaim", "mcp"]
     }
   }
 }
 ```
 
-Or install `pip install 'tourclaim[mcp]==0.2.0'` in a Python 3.10+ environment and configure that environment's `tourclaim` executable with `args: ["mcp"]`. MCP uses stdio; it waits for a client, and does not print a welcome message to stdout. The server exposes 17 tools with input schemas and read/write annotations. No API key is required to start: the assistant can begin a browser sign-in at the traveler's request. The credential stays in the local credentials store and is never returned to the model.
+Or install `pip install 'tourclaim[mcp]==0.2.1'` in a Python 3.10+ environment and configure that environment's `tourclaim` executable with `args: ["mcp"]`. MCP uses stdio; it waits for a client, and does not print a welcome message to stdout. The server exposes 17 tools with input schemas and read/write annotations. No API key is required to start: the assistant can begin a browser sign-in at the traveler's request. The credential stays in the local credentials store and is never returned to the model.
 
 The current service is in **review mode**. Use fictional data only. The traveler must approve evidence sharing and sign the authorization in their own browser. See [MCP.md](https://github.com/tourclaim/tourclaim-cli/blob/main/MCP.md) for the tool list, VS Code and GitHub configurations, troubleshooting, and transport limitations.
 

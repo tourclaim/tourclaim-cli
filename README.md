@@ -61,7 +61,7 @@ TourClaim includes a local MCP server with 17 tools, browser sign-in, and the sa
   "mcpServers": {
     "tourclaim": {
       "command": "uvx",
-      "args": ["--python", "3.12", "--from", "tourclaim[mcp]==0.2.0", "tourclaim", "mcp"]
+      "args": ["--python", "3.12", "--from", "tourclaim[mcp]==0.2.1", "tourclaim", "mcp"]
     }
   }
 }
