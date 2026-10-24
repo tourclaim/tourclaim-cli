@@ -3,7 +3,7 @@
   "name": "io.github.tourclaim/tourclaim",
   "title": "TourClaim by Copernican",
   "description": "Prepare credit-card travel insurance claims with traveler consent. Synthetic review mode.",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "repository": {
     "url": "https://github.com/tourclaim/tourclaim-cli",
     "source": "github"
@@ -13,7 +13,7 @@
     {
       "registryType": "pypi",
       "identifier": "tourclaim",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "runtimeHint": "uvx",
       "runtimeArguments": [
         {
@@ -24,7 +24,7 @@
         {
           "type": "named",
           "name": "--with",
-          "value": "tourclaim[mcp]==0.2.1"
+          "value": "tourclaim[mcp]==0.2.2"
         }
       ],
       "packageArguments": [

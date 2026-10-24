@@ -2,6 +2,12 @@
 
 All notable changes to this project are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-10-24
+
+### Fixed
+
+- Release workflow: the npm job passes the packed tarball as a file path. 0.2.1 was released to PyPI only; this version contains the same changes.
+
 ## [0.2.1] - 2026-10-24
 
 ### Added

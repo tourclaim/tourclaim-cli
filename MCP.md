@@ -13,7 +13,7 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then use 
   "mcpServers": {
     "tourclaim": {
       "command": "uvx",
-      "args": ["--python", "3.12", "--from", "tourclaim[mcp]==0.2.1", "tourclaim", "mcp"]
+      "args": ["--python", "3.12", "--from", "tourclaim[mcp]==0.2.2", "tourclaim", "mcp"]
     }
   }
 }
@@ -21,7 +21,7 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then use 
 
 [Download the example](examples/mcp.json). Restart or reconnect the client after changing its configuration. If a desktop app cannot find `uvx`, use the absolute executable path from `command -v uvx` (macOS/Linux) or `where uvx` (Windows).
 
-With an existing Python 3.10+ environment, you can instead run `pip install 'tourclaim[mcp]==0.2.1'`, set `command` to that environment's absolute `tourclaim` executable, and use `args: ["mcp"]`. The Node executable has the same name but does not provide `mcp`.
+With an existing Python 3.10+ environment, you can instead run `pip install 'tourclaim[mcp]==0.2.2'`, set `command` to that environment's absolute `tourclaim` executable, and use `args: ["mcp"]`. The Node executable has the same name but does not provide `mcp`.
 
 The process communicates through stdio. Starting it in a terminal waits silently for MCP messages; this is expected. It does not expose an HTTP port. Ordinary Python CLI/SDK users can still install `tourclaim` without the MCP dependencies on Python 3.9+.
 
@@ -35,7 +35,7 @@ Use the [`servers` configuration example](examples/vscode-mcp.json) in `.vscode/
     "tourclaim": {
       "type": "stdio",
       "command": "uvx",
-      "args": ["--python", "3.12", "--from", "tourclaim[mcp]==0.2.1", "tourclaim", "mcp"]
+      "args": ["--python", "3.12", "--from", "tourclaim[mcp]==0.2.2", "tourclaim", "mcp"]
     }
   }
 }
