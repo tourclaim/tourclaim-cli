@@ -6,7 +6,7 @@
         "--python",
         "3.12",
         "--from",
-        "tourclaim[mcp]==0.2.1",
+        "tourclaim[mcp]==0.2.2",
         "tourclaim",
         "mcp"
       ]

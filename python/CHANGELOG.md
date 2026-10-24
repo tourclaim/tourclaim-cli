@@ -2,6 +2,10 @@
 
 All notable changes to the Python edition of tourclaim are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-10-24
+
+No changes to the package; released with npm 0.2.2 to keep the version numbers aligned.
+
 ## [0.2.1] - 2026-10-24
 
 ### Changed

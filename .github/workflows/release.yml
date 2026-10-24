@@ -64,7 +64,8 @@ jobs:
         with:
           name: npm-package
           path: npm-package/
-      # The tarball the build job tested and packed; nothing is installed or
+      # The tarball the build job tested and packed ("./": without it npm
+      # reads dir/file as a GitHub repository). Nothing is installed or
       # built here, beside the token. Verify published packages is run manually
       # after approval: until then the version is not on npm.
-      - run: npm stage publish "npm-package/tourclaim-${GITHUB_REF_NAME#v}.tgz" --provenance --access public
+      - run: npm stage publish "./npm-package/tourclaim-${GITHUB_REF_NAME#v}.tgz" --provenance --access public
