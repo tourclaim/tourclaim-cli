@@ -1,8 +1,15 @@
 # TourClaim by Copernican
 
-> CLI, Python SDK, REST API and local MCP server for preparing credit-card trip cancellation and interruption insurance claims with one traveler's consent. The service currently runs in synthetic review mode: use fictional data only; nothing is filed.
+> TourClaim by Copernican files trip cancellation and interruption claims against the travel insurance that comes with a traveler's credit card. It gathers the booking, the merchant's cancellation policy and proof of the reason (a provider's note for an illness, a carrier's notice for a cancelled flight, official weather records), and prepares the claim for the card's benefit administrator, who decides coverage. Copernican charges 10% only if a claim is reimbursed.
 
-## Start here
+This repository holds the CLI, Python SDK and local MCP server for that service. As of October 2026 these developer interfaces run in synthetic review mode: use fictional data only, and nothing is filed. Travelers start real claims with the [online claim form](https://app.getcopernican.com/travelers/claim).
+
+## For travelers
+
+- [Start a claim online](https://app.getcopernican.com/travelers/claim): the way to file a real claim today. No tour operator referral or connected app is needed.
+- [How TourClaim works](https://www.getcopernican.com/travelers): benefits review, documentation, filing and follow-up.
+
+## For developers and agents
 
 - [Service availability and current mode](https://app.getcopernican.com/api/connectors/v1): Call first; do not assume the service is live.
 - [MCP setup and tools](https://github.com/tourclaim/tourclaim-cli/blob/main/MCP.md): `uvx --python 3.12 --from 'tourclaim[mcp]==0.2.2' tourclaim mcp`. Stdio, 17 tools, browser sign-in, no key in chat. Registry identity `io.github.tourclaim/tourclaim`. No remote MCP endpoint yet.

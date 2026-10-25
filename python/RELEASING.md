@@ -22,7 +22,7 @@ The package already exists on PyPI. The following settings document how its trus
 
 ## Each release
 
-1. Set the version in `python/src/tourclaim/__init__.py` (`__version__ = "X.Y.Z"`) and add a `## [X.Y.Z] - YYYY-MM-DD` section to `python/CHANGELOG.md`. The Node edition's `package.json`, `package-lock.json` and `src/version.ts` use the same version, because one tag releases both. Update `server.json` (server, package and extra dependency versions), MCP examples and install commands to match.
+1. Set the version in `python/src/tourclaim/__init__.py` (`__version__ = "X.Y.Z"`) and add a `## [X.Y.Z] - YYYY-MM-DD` section to `python/CHANGELOG.md`. The Node edition's `package.json`, `package-lock.json` and `src/version.ts` use the same version, because one tag releases both. Update `server.json` (server, package and extra dependency versions), MCP examples and the install commands in `README.md`, `python/README.md`, `MCP.md` and `llms.txt` to match.
 2. Commit, and check that CI passes on all platforms.
 3. Tag and push the tag:
 

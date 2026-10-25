@@ -2,6 +2,13 @@
 
 All notable changes to this project are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Documentation
+
+- The READMEs, MCP.md and llms.txt open with one description of TourClaim by Copernican. Review-mode notices are dated and point a traveler with a real claim to the online claim form. The package and MCP Registry descriptions match.
+- AGENTS.md: in review mode, an agent tells a traveler with a real trip to start it with the online claim form instead of entering real details.
+
 ## [0.2.2] - 2026-10-24
 
 ### Fixed

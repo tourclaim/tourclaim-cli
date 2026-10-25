@@ -1,10 +1,10 @@
 # tourclaim
 
-Python CLI, SDK and MCP server for credit-card travel insurance claims, with a companion Node CLI.
+TourClaim by Copernican files trip cancellation and interruption claims against the travel insurance that comes with a traveler’s credit card. It gathers the booking, the merchant’s cancellation policy and proof of the reason (a provider’s note for an illness, a carrier’s notice for a cancelled flight, official weather records), and prepares the claim for the card’s benefit administrator, who decides coverage. Copernican charges 10% only if a claim is reimbursed.
 
-Command-line client for [TourClaim by Copernican](https://www.getcopernican.com/travelers). Give your app, assistant, or terminal a travel-claim workflow: save a traveler’s answers, collect the evidence they choose to share, hand them the authorization to sign, and follow their claim. Works with any assistant that can run shell commands or call the API; no enrolled tour operator or booking-platform integration is required.
+This repository is the Python CLI, SDK and MCP server for [TourClaim by Copernican](https://www.getcopernican.com/travelers), with a companion Node CLI. Give your app, assistant, or terminal a travel-claim workflow: save a traveler’s answers, collect the evidence they choose to share, hand them the authorization to sign, and follow their claim. Works with any assistant that can run shell commands or call the API; no enrolled tour operator or booking-platform integration is required.
 
-> **Review mode.** The TourClaim connector API currently runs in review mode: it creates synthetic claims and files nothing with an insurer. Use fictional booking and medical data only. `tourclaim status` shows the current mode, and every intake and claim the API returns says which mode it came from.
+> **Review mode (as of October 2026).** The developer API, both CLI editions and the MCP server create synthetic claims and file nothing with an insurer. Use fictional booking and medical data only. Travelers start real claims with the [online claim form](https://app.getcopernican.com/travelers/claim). `tourclaim status` shows the current mode, and every intake and claim the API returns says which mode it came from.
 
 ## For developers, agents, and platforms
 
@@ -16,7 +16,7 @@ The package exposes saved intake, selected email and file evidence, traveler aut
 - **Python applications:** use `tourclaim.Client` from the [Python edition](https://github.com/tourclaim/tourclaim-cli/tree/main/python#readme).
 - **Platforms and tool-calling assistants:** use the [developer guide](https://app.getcopernican.com/developers) and [OpenAPI schema](https://app.getcopernican.com/api/connectors/v1/openapi.json).
 
-Muse is one integration of these capabilities and is under review; it is not required to use this package. Existing `/muse` URLs and key formats are compatibility details and continue to work. Each connection acts for one traveler, not an operator or a platform-wide account.
+Existing `/muse` URLs and key formats are compatibility details and continue to work. Each connection acts for one traveler, not an operator or a platform-wide account.
 
 ## What it does
 
@@ -67,7 +67,7 @@ TourClaim includes a local MCP server with 17 tools, browser sign-in, and the sa
 }
 ```
 
-See [MCP.md](MCP.md) for all tools, VS Code/Copilot configuration, authentication, and limitations. The official registry identity is `io.github.tourclaim/tourclaim`; [server.json](server.json) is published by the release workflow after PyPI succeeds. The service remains in **synthetic review mode**.
+See [MCP.md](MCP.md) for all tools, VS Code/Copilot configuration, authentication, and limitations. The official registry identity is `io.github.tourclaim/tourclaim`; [server.json](server.json) is published by the release workflow after PyPI succeeds. Like the CLI, it uses synthetic review mode (see the note at the top).
 
 ## Quickstart
 
