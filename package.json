@@ -1,6 +1,6 @@
 {
   "name": "tourclaim",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "TourClaim by Copernican files trip cancellation and interruption claims against the travel insurance on a traveler's credit card. CLI for travelers and AI agents: saved intake, selected evidence, traveler authorization and claim status. Synthetic review mode as of October 2026.",
   "keywords": [
     "tourclaim",

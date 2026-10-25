@@ -12,7 +12,7 @@ This repository holds the CLI, Python SDK and local MCP server for that service.
 ## For developers and agents
 
 - [Service availability and current mode](https://app.getcopernican.com/api/connectors/v1): Call first; do not assume the service is live.
-- [MCP setup and tools](https://github.com/tourclaim/tourclaim-cli/blob/main/MCP.md): `uvx --python 3.12 --from 'tourclaim[mcp]==0.2.2' tourclaim mcp`. Stdio, 17 tools, browser sign-in, no key in chat. Registry identity `io.github.tourclaim/tourclaim`. No remote MCP endpoint yet.
+- [MCP setup and tools](https://github.com/tourclaim/tourclaim-cli/blob/main/MCP.md): `uvx --python 3.12 --from 'tourclaim[mcp]==0.2.3' tourclaim mcp`. Stdio, 17 tools, browser sign-in, no key in chat. Registry identity `io.github.tourclaim/tourclaim`. No remote MCP endpoint yet.
 - [Agent workflow and consent rules](https://github.com/tourclaim/tourclaim-cli/blob/main/AGENTS.md): Ask only for missing facts, get consent for each evidence item, let the traveler sign in their browser, never promise coverage.
 - [Python package and library](https://pypi.org/project/tourclaim/): `pip install tourclaim` for CLI/SDK; `pip install 'tourclaim[mcp]'` for MCP.
 - [CLI reference](https://github.com/tourclaim/tourclaim-cli#readme): JSON output, drafts, evidence, signing links and claim status.
