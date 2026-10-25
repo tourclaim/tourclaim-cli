@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.tourclaim/tourclaim",
   "title": "TourClaim by Copernican",
-  "description": "Prepare credit-card travel insurance claims with traveler consent. Synthetic review mode.",
+  "description": "Prepare trip cancellation claims on credit-card travel insurance with traveler consent. Review mode.",
   "version": "0.2.2",
   "repository": {
     "url": "https://github.com/tourclaim/tourclaim-cli",

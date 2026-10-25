@@ -2,9 +2,11 @@
 
 <!-- mcp-name: io.github.tourclaim/tourclaim -->
 
+TourClaim by Copernican files trip cancellation and interruption claims against the travel insurance that comes with a traveler’s credit card. It gathers the booking, the merchant’s cancellation policy and proof of the reason (a provider’s note for an illness, a carrier’s notice for a cancelled flight, official weather records), and prepares the claim for the card’s benefit administrator, who decides coverage. Copernican charges 10% only if a claim is reimbursed.
+
 Python SDK and command-line client for [TourClaim by Copernican](https://www.getcopernican.com/travelers). Give your app, assistant, or terminal a travel-claim workflow: save a traveler’s answers, collect the evidence they choose to share, hand them the authorization to sign, and follow their claim. Works with any assistant that can run shell commands or call the API; no enrolled tour operator or booking-platform integration is required.
 
-> **Review mode.** The TourClaim connector API currently runs in review mode: it creates synthetic claims and files nothing with an insurer. Use fictional booking and medical data only. `tourclaim status` (or `Client().connector_info()["mode"]`) shows the current mode, and every draft and claim the API returns says which mode it came from.
+> **Review mode (as of October 2026).** The developer API, both CLI editions and the MCP server create synthetic claims and file nothing with an insurer. Use fictional booking and medical data only. Travelers start real claims with the [online claim form](https://app.getcopernican.com/travelers/claim). `tourclaim status` (or `Client().connector_info()["mode"]`) shows the current mode, and every draft and claim the API returns says which mode it came from.
 
 This is the Python edition of [tourclaim](https://github.com/tourclaim/tourclaim-cli). It has the same commands, flags, output, exit codes and credentials file as the Node edition (`npx tourclaim`), so a key saved by one works in the other. It adds a typed library, `tourclaim.Client`, and an optional MCP server.
 
@@ -18,7 +20,7 @@ The package exposes saved intake, selected email and file evidence, traveler aut
 - **Python applications:** use `tourclaim.Client` from the [Python edition](https://github.com/tourclaim/tourclaim-cli/tree/main/python#readme).
 - **Platforms and tool-calling assistants:** use the [developer guide](https://app.getcopernican.com/developers) and [OpenAPI schema](https://app.getcopernican.com/api/connectors/v1/openapi.json).
 
-Muse is one integration of these capabilities and is under review; it is not required to use this package. Existing `/muse` URLs and key formats are compatibility details and continue to work. Each connection acts for one traveler, not an operator or a platform-wide account.
+Existing `/muse` URLs and key formats are compatibility details and continue to work. Each connection acts for one traveler, not an operator or a platform-wide account.
 
 ## What it does
 
@@ -66,7 +68,7 @@ With [uv](https://docs.astral.sh/uv/getting-started/installation/) installed, ad
 
 Or install `pip install 'tourclaim[mcp]==0.2.2'` in a Python 3.10+ environment and configure that environment's `tourclaim` executable with `args: ["mcp"]`. MCP uses stdio; it waits for a client, and does not print a welcome message to stdout. The server exposes 17 tools with input schemas and read/write annotations. No API key is required to start: the assistant can begin a browser sign-in at the traveler's request. The credential stays in the local credentials store and is never returned to the model.
 
-The current service is in **review mode**. Use fictional data only. The traveler must approve evidence sharing and sign the authorization in their own browser. See [MCP.md](https://github.com/tourclaim/tourclaim-cli/blob/main/MCP.md) for the tool list, VS Code and GitHub configurations, troubleshooting, and transport limitations.
+As of October 2026 the MCP server runs in **review mode**: use fictional data only. Travelers start real claims with the [online claim form](https://app.getcopernican.com/travelers/claim). The traveler must approve evidence sharing and sign the authorization in their own browser. See [MCP.md](https://github.com/tourclaim/tourclaim-cli/blob/main/MCP.md) for the tool list, VS Code and GitHub configurations, troubleshooting, and transport limitations.
 
 ## Command line quickstart
 

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "tourclaim"
 dynamic = ["version"]
-description = "Travel-claim SDK and CLI for Python apps, travelers, and AI agents: saved intake, selected evidence, traveler authorization, and claim status with TourClaim by Copernican."
+description = "TourClaim by Copernican files trip cancellation and interruption claims against the travel insurance on a traveler's credit card. CLI, Python SDK and MCP server for travelers and AI agents: saved intake, selected evidence, traveler authorization and claim status. Synthetic review mode as of October 2026."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -27,6 +27,8 @@ keywords = [
     "sdk",
     "mcp",
     "model context protocol",
+    "travel claims",
+    "credit card travel insurance",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -55,6 +57,7 @@ mcp = ["mcp==2.3.0; python_version >= '3.10'"]
 
 [project.urls]
 Homepage = "https://github.com/tourclaim/tourclaim-cli"
+Website = "https://www.getcopernican.com/travelers"
 "MCP setup" = "https://github.com/tourclaim/tourclaim-cli/blob/main/MCP.md"
 Documentation = "https://github.com/tourclaim/tourclaim-cli/tree/main/python#readme"
 Issues = "https://github.com/tourclaim/tourclaim-cli/issues"

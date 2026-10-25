@@ -58,3 +58,19 @@ The current copy was taken from production (server 1.57.8) on 2026-10-06.
 5. After approving, run [Verify published packages](.github/workflows/verify-published.yml) by hand from the Actions tab with registry `npm` (the PyPI release workflow runs it for PyPI by itself). It installs the new version from npm and PyPI on Linux, macOS and Windows, with no checkout and an empty home, and runs `--version`, `--help`, `status` and `schema` against the live API without signing in (`npx`, `npm install -g`, `pip install`, `uvx` and `pipx run`). Run it by hand from the Actions tab to check any version.
 
 If the workflow fails before `npm stage publish`, fix the problem, delete the tag (`git push --delete origin vX.Y.Z` and `git tag -d vX.Y.Z`) and tag again. A published version cannot be replaced; release a new one.
+
+## Public descriptions
+
+`README.md`, `python/README.md` (the PyPI page), `MCP.md`, `llms.txt`, `package.json`, `python/pyproject.toml` and `server.json` (the MCP Registry entry) each describe the service. Keep their facts consistent: what TourClaim does, the fee, the current mode and where a traveler starts a real claim. npm, PyPI and the MCP Registry show a changed description only after the next release.
+
+### When review mode ends
+
+`git grep -n -i -E "review mode|synthetic" -- '*.md' '*.txt' '*.json' '*.toml'` lists every notice to update, including:
+
+- the top callouts in `README.md` and `python/README.md`, and their developer and MCP paragraphs;
+- the bold notice in `MCP.md`;
+- `AGENTS.md` rule 2: keep the mode check and drop the referral to the online claim form;
+- the descriptions in `llms.txt`, `package.json`, `python/pyproject.toml` and `server.json`;
+- the repository description on GitHub.
+
+Leave released changelog entries as they are.

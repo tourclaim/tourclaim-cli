@@ -1,8 +1,10 @@
 # TourClaim MCP server
 
-TourClaim by Copernican helps a traveler prepare a trip cancellation or interruption claim against the travel insurance included with their credit card. The MCP adapter exposes the existing Python client's operations to compatible assistants.
+TourClaim by Copernican files trip cancellation and interruption claims against the travel insurance that comes with a traveler's credit card. It gathers the booking, the merchant's cancellation policy and proof of the reason (a provider's note for an illness, a carrier's notice for a cancelled flight, official weather records), and prepares the claim for the card's benefit administrator, who decides coverage. Copernican charges 10% only if a claim is reimbursed.
 
-**The service currently runs in review mode. Use fictional booking and medical data only. Nothing is filed, charged or sent to a clinician.** Always call `get_service_info` to check current availability and mode. Copernican's fee is 10% only when a claim is reimbursed; only USD bookings are supported. The tools do not decide coverage or promise reimbursement.
+This MCP server lets a compatible assistant prepare a claim for one traveler, with their consent, using the Python client's operations.
+
+**As of October 2026 this MCP server, like the developer API and both CLI editions, runs in review mode. Use fictional booking and medical data only. Nothing is filed, charged or sent to a clinician.** Travelers start real claims with the [online claim form](https://app.getcopernican.com/travelers/claim). Always call `get_service_info` to check current availability and mode. Copernican's fee is 10% only when a claim is reimbursed; only USD bookings are supported. The tools do not decide coverage or promise reimbursement.
 
 ## Install and connect
 
